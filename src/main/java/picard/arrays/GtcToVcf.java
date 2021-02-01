@@ -24,17 +24,8 @@
 
 package picard.arrays;
 
-import org.broadinstitute.barclay.help.DocumentedFeature;
-import picard.arrays.illumina.ArraysControlInfo;
-import picard.arrays.illumina.Build37ExtendedIlluminaManifest;
-import picard.arrays.illumina.Build37ExtendedIlluminaManifestRecord;
-import picard.arrays.illumina.IlluminaManifestRecord;
-import picard.arrays.illumina.InfiniumEGTFile;
-import picard.arrays.illumina.InfiniumGTCFile;
-import picard.arrays.illumina.InfiniumGTCRecord;
-import picard.arrays.illumina.InfiniumVcfFields;
-import picard.pedigree.Sex;
 import htsjdk.samtools.SAMSequenceDictionary;
+import htsjdk.samtools.SAMSequenceRecord;
 import htsjdk.samtools.reference.ReferenceSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory;
 import htsjdk.samtools.util.IOUtil;
@@ -64,13 +55,22 @@ import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.lang.StringUtils;
 import org.broadinstitute.barclay.argparser.Argument;
 import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
+import org.broadinstitute.barclay.help.DocumentedFeature;
 import picard.PicardException;
+import picard.arrays.illumina.ArraysControlInfo;
+import picard.arrays.illumina.Build37ExtendedIlluminaManifest;
+import picard.arrays.illumina.Build37ExtendedIlluminaManifestRecord;
+import picard.arrays.illumina.IlluminaManifestRecord;
+import picard.arrays.illumina.InfiniumEGTFile;
+import picard.arrays.illumina.InfiniumGTCFile;
+import picard.arrays.illumina.InfiniumGTCRecord;
+import picard.arrays.illumina.InfiniumVcfFields;
 import picard.cmdline.CommandLineProgram;
 import picard.cmdline.StandardOptionDefinitions;
+import picard.pedigree.Sex;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -187,13 +187,15 @@ public class GtcToVcf extends CommandLineProgram {
                             VariantContext.class,
                             new VCFRecordCodec(vcfHeader),
                             new VariantContextComparator(refSeq.getSequenceDictionary()),
-                            MAX_RECORDS_IN_RAM,
-                            TMP_DIR.stream().map(File::toPath).toArray(Path[]::new));
+                            MAX_RECORDS_IN_RAM);
 
             // fill the sorting collection
             fillContexts(contexts, infiniumGTCFile, manifest, infiniumEGTFile);
 
             writeVcf(contexts, OUTPUT, refSeq.getSequenceDictionary(), vcfHeader);
+
+            // not sure this is needed but it's definitely **cleaner**
+            contexts.cleanup();
 
             return 0;
         } catch (IOException e) {
@@ -211,6 +213,9 @@ public class GtcToVcf extends CommandLineProgram {
         refSeq = ReferenceSequenceFileFactory.getReferenceSequenceFile(REFERENCE_SEQUENCE);
         final SAMSequenceDictionary sequenceDictionary = refSeq.getSequenceDictionary();
         final String assembly = sequenceDictionary.getSequence(0).getAssembly();
+        if (assembly == null) {
+            return new String[]{"Assembly tag ('" + SAMSequenceRecord.ASSEMBLY_TAG + "') is required in the sequence dictionary)."};
+        }
         if (!assembly.equals("GRCh37")) {
             return new String[]{"The selected reference sequence ('" + assembly + "') is not supported.  This tool is currently only implemented to support NCBI Build 37 / HG19 Reference Sequence."};
         }
