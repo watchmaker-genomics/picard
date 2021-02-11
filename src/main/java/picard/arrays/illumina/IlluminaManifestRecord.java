@@ -336,7 +336,7 @@ public class IlluminaManifestRecord {
 
     public boolean getIntensityOnly() { return intensityOnly; }
 
-    private String getMajorGenomeBuild(String genomeBuild) {
+    String getMajorGenomeBuild(String genomeBuild) {
 
         final String majorGenomeBuild;
         // determine majorGenomeBuild and hgGenomeBuild
@@ -350,7 +350,7 @@ public class IlluminaManifestRecord {
         return majorGenomeBuild;
     }
 
-    private String getHgGenomeBuild(String majorGenomeBuild) {
+    String getHgGenomeBuild(String majorGenomeBuild) {
         return IlluminaManifest.HG_TO_NCBI.inverseBidiMap().containsKey(majorGenomeBuild)
                 ? IlluminaManifest.HG_TO_NCBI.inverseBidiMap().get(majorGenomeBuild).toString()
                 : "UNKNOWN";

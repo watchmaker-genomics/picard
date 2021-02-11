@@ -61,20 +61,20 @@ public class ExtendedIlluminaManifestRecord {
         validateEntryField(locusEntry.species, illuminaManifestRecord.getSpecies(), "species");
         validateEntryField(locusEntry.mapInfo, illuminaManifestRecord.getPosition(), "mapInfo");
         validateEntryField(locusEntry.addressA, Integer.parseInt(illuminaManifestRecord.getAddressAId()), "addressAId");
-        if (locusEntry.version == 4) {
+        if (locusEntry.getVersion() == 4) {
             validateEntryField(locusEntry.alleleAProbeSeq, illuminaManifestRecord.getAlleleAProbeSeq(), "alleleAProbeSeq");
         }
         if ((locusEntry.addressB != -1) && (illuminaManifestRecord.getAddressBId() != null)) {
             validateEntryField(locusEntry.addressB, Integer.parseInt(illuminaManifestRecord.getAddressBId()), "addressBId");
         }
-        if (locusEntry.version == 4) {
+        if (locusEntry.getVersion() == 4) {
             validateEntryField(locusEntry.alleleBProbeSeq, illuminaManifestRecord.getAlleleBProbeSeq(), "alleleBProbeSeq");
         }
         validateEntryField(locusEntry.genomeBuild, illuminaManifestRecord.getGenomeBuild(), "genomeBuild");
         validateEntryField(locusEntry.source, illuminaManifestRecord.getSource(), "source");
         validateEntryField(locusEntry.sourceVersion, illuminaManifestRecord.getSourceVersion(), "sourceVersion");
         validateEntryField(locusEntry.sourceStrand, illuminaManifestRecord.getSourceStrand(), "sourceStrand");
-        if (locusEntry.version == 4) {
+        if (locusEntry.getVersion() == 4) {
             validateEntryField(locusEntry.sourceSeq, illuminaManifestRecord.getSourceSeq(), "sourceSeq");
             validateEntryField(locusEntry.topGenomicSeq, illuminaManifestRecord.getTopGenomicSeq(), "topGenomicSeq");
         }
@@ -82,7 +82,7 @@ public class ExtendedIlluminaManifestRecord {
 //            validateEntryField(locusEntry.expClusters, Integer.parseInt(record.getExpClusters()), "expClusters");
 //        }
 //        validateEntryField(locusEntry.intensityOnly, record.getIntensityOnly(), "intensityOnly");
-        if (locusEntry.version == 8) {
+        if (locusEntry.getVersion() == 8) {
             validateEntryField(locusEntry.refStrand, illuminaManifestRecord.getRefStrand(), "refStrand");
         }
     }

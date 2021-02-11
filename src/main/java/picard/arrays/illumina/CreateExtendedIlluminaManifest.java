@@ -28,6 +28,7 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -132,16 +133,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
             IlluminaBPMLocusEntry[] illuminaBPMLocusEntries = illuminaBPMFile.getLocusEntries();
 
-            // Load the cluster file to get the GenTrain scores
-            // load the egt first, and create a map of ilmnid to gentrain score.  Save that and use it for deduplicating.
-            log.info("Loading the egt file");
-            final InfiniumEGTFile infiniumEGTFile;
-            try {
-                infiniumEGTFile = new InfiniumEGTFile(CLUSTER_FILE);
-            } catch (IOException e) {
-                throw new PicardException("Error reading cluster file '" + CLUSTER_FILE.getAbsolutePath() + "'", e);
-            }
-
             ExtendedIlluminaManifestRecordCreator creator = new ExtendedIlluminaManifestRecordCreator(referenceSequenceMap, chainFilesMap);
 
             // first iteration through the manifest to find all dupes
@@ -153,6 +144,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             //grab the dictionary from the VCF and use it in the IntervalList
             final SAMFileHeader samFileHeader = new SAMFileHeader();
             samFileHeader.setSequenceDictionary(sequenceDictionary);
+//
+//            List<Build37ExtendedIlluminaManifestRecord> records = new ArrayList<>();
 
             int locusIndex = 0;
             while (firstPassIterator.hasNext()) {
@@ -165,7 +158,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
                 // Create an ExtendedIlluminaManifestRecord here so that we can get the (potentially lifted over) coordinates
                 final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
-                        referenceSequenceMap, chainFilesMap, false, null);
+                        referenceSequenceMap, chainFilesMap);
+//                records.add(rec);
                 manifestStatistics.updateStatistics(rec);
 
                 // A DUP is only a DUP if it's at the same location AND has the same alleles...
@@ -212,6 +206,17 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                     .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
             coordinateMap.clear();
 
+            // Load the cluster file to get the GenTrain scores
+            // load the egt first, and create a map of ilmnid to gentrain score.  Save that and use it for deduplicating.
+            log.info("Loading the egt file");
+            final InfiniumEGTFile infiniumEGTFile;
+            try {
+                infiniumEGTFile = new InfiniumEGTFile(CLUSTER_FILE);
+            } catch (IOException e) {
+                throw new PicardException("Error reading cluster file '" + CLUSTER_FILE.getAbsolutePath() + "'", e);
+            }
+
+            // TODO - you are flagging as dupes SNPs and Indels together.
             // evaluate each coordinate assay and remove the assay with the best GenTrain score (all remaining are dupes)
             dupeMap.entrySet().forEach(entry ->
                     entry.getValue().remove(entry.getValue().stream().max(Comparator.comparingDouble(assay ->
@@ -234,7 +239,27 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             //second iteration to write all records after dupe evaluation
             log.info("Phase 3.  Generate the Extended Illumina Manifest");
             logger = new ProgressLogger(log, 10000);
+
             List<Build37ExtendedIlluminaManifestRecord> badRecords = new ArrayList<>();
+//            for (Build37ExtendedIlluminaManifestRecord record: records) {
+//                logger.record("0", 0);
+//                final String locus = record.getChr() + "." + record.getPosition();
+//                String rsId;
+//                if (record.isSnp()) {
+//                    rsId = snpLocusToRsId.get(locus);
+//                } else {
+//                    rsId = indelLocusToRsId.get(locus);
+//                }
+//                record.setRsId(rsId);
+//                if (record.isBad()) {
+//                    badRecords.add(record);
+//                } else {
+//                    record.setDupe(dupeIndices.contains(record.getIndex()));
+//                }
+//                out.write(record.getLine());
+//                out.newLine();
+//            }
+
             locusIndex = 0;
             while (secondPassIterator.hasNext()) {
                 logger.record("0", 0);
@@ -248,9 +273,12 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                     rsId = indelLocusToRsId.get(locus);
                 }
                 final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
-                        referenceSequenceMap, chainFilesMap, dupeIndices.contains(record.getIndex()), rsId);
+                        referenceSequenceMap, chainFilesMap);
+                rec.setRsId(rsId);
                 if (rec.isBad()) {
                     badRecords.add(rec);
+                } else {
+                    rec.setDupe(dupeIndices.contains(record.getIndex()));
                 }
                 out.write(rec.getLine());
                 out.newLine();
@@ -377,7 +405,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
         void logStatistics(File output) throws IOException {
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
-                    new FileOutputStream(output), "utf-8"))) {
+                    new FileOutputStream(output), StandardCharsets.UTF_8))) {
                 writer.write("Number of assays written: " + numAssays);
                 writer.newLine();
                 writer.write("Number of assays flagged: " + numAssaysFlagged);

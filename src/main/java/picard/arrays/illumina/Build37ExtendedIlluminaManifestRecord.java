@@ -96,7 +96,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     private String snpRefAllele;
     private String snpAlleleA;
     private String snpAlleleB;
-    private final String rsId;
+    private String rsId;
     private Flag flag = Flag.PASS;
 
     private Allele A;
@@ -197,9 +197,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     Build37ExtendedIlluminaManifestRecord(final IlluminaBPMLocusEntry locusEntry,
                                           final IlluminaManifestRecord record,
                                    final Map<String, ReferenceSequenceFile> referenceFilesMap,
-                                   final Map<String, File> chainFilesMap,
-                                   final boolean dupe,
-                                   final String passedRsId) {
+                                   final Map<String, File> chainFilesMap) {
         super(record);
         this.locusEntry = locusEntry;
         this.illuminaManifestRecord = record;
@@ -209,12 +207,8 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         // Check that the fields in the bpm agree with those in the (CSV) manifest.
         validateBpmLocusEntryAgainstIlluminaManifestRecord();
 
-        // New:
-        //set dupe first so it can be overridden by fail flags
-        if (dupe) flag = Flag.DUPE;
-
         // Look for entries which Illumina has marked as invalid
-        if (getChrom().equals(IlluminaManifestRecord.ILLUMINA_FLAGGED_BAD_CHR)) {
+        if (locusEntry.chrom.equals(IlluminaManifestRecord.ILLUMINA_FLAGGED_BAD_CHR)) {
             flag = Build37ExtendedIlluminaManifestRecord.Flag.ILLUMINA_FLAGGED;
         }
 //
@@ -224,10 +218,10 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
 
         // TODO - figure out how to do this with and without liftover files
         if (!isBad()) {
-            if (getMajorGenomeBuild().trim().equals(BUILD_37)) {
+            if (illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_37)) {
                 // no liftover needed
-                b37Chr = getChr();
-                b37Pos = getPosition();
+                b37Chr = locusEntry.chrom;
+                b37Pos = locusEntry.mapInfo;
             } else {
                 liftOverToBuild37(referenceFilesMap, chainFilesMap);
             }
@@ -241,7 +235,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
             }
         }
 
-        rsId = passedRsId == null ? "" : passedRsId;
         if (!isBad()) {
             if (isSnp()) {
                 processSnp(refFile);
@@ -303,9 +296,9 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     private void liftOverToBuild37(final Map<String, ReferenceSequenceFile> referenceFilesMap,
                                    final Map<String, File> chainFilesMap) {
 
-        final File chainFileToBuild37 = chainFilesMap.get(getMajorGenomeBuild());
+        final File chainFileToBuild37 = chainFilesMap.get(illuminaManifestRecord.getMajorGenomeBuild());
         final LiftOver liftOver = new LiftOver(chainFileToBuild37);
-        final Interval interval = new Interval(getChr(), getPosition(), getPosition());
+        final Interval interval = new Interval(locusEntry.getChrom(), locusEntry.getMapInfo(), locusEntry.mapInfo);
         final Interval b37Interval = liftOver.liftOver(interval);
 
         if (b37Interval != null) {
@@ -313,11 +306,11 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
             b37Pos = b37Interval.getStart();
 
             // Validate that the reference allele at the lifted over coordinates matches that of the original.
-            String originalRefAllele = getSequenceAt(referenceFilesMap.get(BUILD_36), getChr(), getPosition(), getPosition());
+            String originalRefAllele = getSequenceAt(referenceFilesMap.get(BUILD_36), locusEntry.getChrom(), locusEntry.getMapInfo(), locusEntry.mapInfo);
             String newRefAllele = getSequenceAt(referenceFilesMap.get(BUILD_37), b37Chr, b37Pos, b37Pos);
             if (originalRefAllele.equals(newRefAllele)) {
                 log.debug("Lifted over record " + this);
-                log.debug(" From build " + getMajorGenomeBuild() + " chr=" + getChr() + ", position=" + getPosition()  + " To build " + BUILD_37 + " chr=" + b37Chr + ", position=" + b37Pos);
+                log.debug(" From build " + illuminaManifestRecord.getMajorGenomeBuild() + " chr=" + locusEntry.getChrom() + ", position=" + locusEntry.getMapInfo()  + " To build " + BUILD_37 + " chr=" + b37Chr + ", position=" + b37Pos);
             } else {
                 flag = Flag.LIFTOVER_FAILED;
                 log.error("Liftover failed for record: " + this);
@@ -334,8 +327,8 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
      * <p>
      */
     private void processSnp(final ReferenceSequenceFile refFile) {
-        snpAlleleA = getSnp().substring(1, 2);
-        snpAlleleB = getSnp().substring(3, 4);
+        snpAlleleA = locusEntry.getSnp().substring(1, 2);
+        snpAlleleB = locusEntry.getSnp().substring(3, 4);
 
         if (referenceStrand == Strand.NEGATIVE) {
             snpAlleleA = SequenceUtil.reverseComplement(snpAlleleA);
@@ -345,9 +338,9 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         //extra validation for ambiguous snps
         // TODO - is this really needed??  Or
         if (isAmbiguous()) {
-            if (getAlleleBProbeSeq() != null) {
-                String probeAAllele = getAlleleAProbeSeq().substring(getAlleleAProbeSeq().length() - 1);
-                String probeBAllele = getAlleleBProbeSeq().substring(getAlleleBProbeSeq().length() - 1);
+            if (illuminaManifestRecord.getAlleleBProbeSeq() != null) {
+                String probeAAllele = illuminaManifestRecord.getAlleleAProbeSeq().substring(illuminaManifestRecord.getAlleleAProbeSeq().length() - 1);
+                String probeBAllele = illuminaManifestRecord.getAlleleBProbeSeq().substring(illuminaManifestRecord.getAlleleBProbeSeq().length() - 1);
                 if (!probeAAllele.equals(snpAlleleA) && !probeBAllele.equals(snpAlleleB) && (referenceStrand == Strand.POSITIVE)) {
                     snpAlleleA = probeAAllele;
                     snpAlleleB = probeBAllele;
@@ -367,7 +360,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
 
     private void processIndel(final ReferenceSequenceFile refFile) {
         // First let's validate the probe sequence
-        String alleleAProbeSeq = getAlleleAProbeSeq().toUpperCase();
+        String alleleAProbeSeq = illuminaManifestRecord.getAlleleAProbeSeq().toUpperCase();
         if (!ACGT_PATTERN.matcher(alleleAProbeSeq).find()) {
             throw new PicardException("AlleleAProbeSeq for record: " + this + " contains non-ACGT character(s)");
         }
@@ -435,7 +428,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
             flag = Flag.PROBE_SEQUENCE_MISMATCH;
             log.warn("Error in processIndel.  Record: " + this);
             log.warn("  Couldn't find alleleAProbeSeq in reference");
-            log.debug("  AlleleAProbeSeq: " + getAlleleAProbeSeq());
+            log.debug("  AlleleAProbeSeq: " + illuminaManifestRecord.getAlleleAProbeSeq());
             return;
         }
         if ((!fivePrimeSequenceAndIndex.isFound()) || (!threePrimeSequenceAndIndex.isFound())) {
@@ -481,7 +474,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         } else {
             snpRefAllele = refAllele;
         }
-        if (getSnp().equals("[I/D]")) {
+        if (locusEntry.getSnp().equals("[I/D]")) {
             snpAlleleA = refAllele + indelSeq;
             snpAlleleB = refAllele;
         } else {
@@ -599,9 +592,9 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
             final String probeSeq;
             if (isAmbiguous()) {
                 //ambiguous snps contain the probed base so we need to truncate the string
-                probeSeq = getAlleleAProbeSeq().substring(0, getAlleleAProbeSeq().length() - 1);
+                probeSeq = illuminaManifestRecord.getAlleleAProbeSeq().substring(0, illuminaManifestRecord.getAlleleAProbeSeq().length() - 1);
             } else {
-                probeSeq = getAlleleAProbeSeq();
+                probeSeq = illuminaManifestRecord.getAlleleAProbeSeq();
             }
 
             // Should use lifted over b37 coordinates!!!
@@ -616,7 +609,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
                 flag = Flag.PROBE_SEQUENCE_MISMATCH;
                 log.warn("Error in getStrand.  Record:" + this);
                 log.warn("  Couldn't find alleleAProbeSeq in reference");
-                log.debug("  AlleleAProbeSeq: " + getAlleleAProbeSeq());
+                log.debug("  AlleleAProbeSeq: " + illuminaManifestRecord.getAlleleAProbeSeq());
                 log.debug("  Reference:       " + reference);
                 log.debug("  Reverse Ref:     " + reverseReference);
                 return;
@@ -633,6 +626,21 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         return locusEntry.chrom;
     }
 
+    public void setRsId(String rsId) {
+        this.rsId = rsId;
+    }
+
+    // TODO - you should have two different flags for error and dupe and only merge them later.
+    public void setDupe(boolean isDupe) {
+        if (!isBad()) {
+            if (isDupe) {
+                flag = Flag.DUPE;
+            }
+        }
+    }
+
+
+    // TODO - need an object / class to sanitize these and then pull the correct record???
     private void validateBpmLocusEntryAgainstIlluminaManifestRecord() {
         validateEntryField(locusEntry.ilmnId, illuminaManifestRecord.getIlmnId(), "ilmnId");
         validateEntryField(locusEntry.name, illuminaManifestRecord.getName(), "name");
@@ -643,20 +651,20 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         validateEntryField(locusEntry.species, illuminaManifestRecord.getSpecies(), "species");
         validateEntryField(locusEntry.mapInfo, illuminaManifestRecord.getPosition(), "mapInfo");
         validateEntryField(locusEntry.addressA, Integer.parseInt(illuminaManifestRecord.getAddressAId()), "addressAId");
-        if (locusEntry.version == 4) {
+        if (locusEntry.getVersion() == 4) {
             validateEntryField(locusEntry.alleleAProbeSeq, illuminaManifestRecord.getAlleleAProbeSeq(), "alleleAProbeSeq");
         }
         if ((locusEntry.addressB != -1) && (illuminaManifestRecord.getAddressBId() != null)) {
             validateEntryField(locusEntry.addressB, Integer.parseInt(illuminaManifestRecord.getAddressBId()), "addressBId");
         }
-        if (locusEntry.version == 4) {
+        if (locusEntry.getVersion() == 4) {
             validateEntryField(locusEntry.alleleBProbeSeq, illuminaManifestRecord.getAlleleBProbeSeq(), "alleleBProbeSeq");
         }
         validateEntryField(locusEntry.genomeBuild, illuminaManifestRecord.getGenomeBuild(), "genomeBuild");
         validateEntryField(locusEntry.source, illuminaManifestRecord.getSource(), "source");
         validateEntryField(locusEntry.sourceVersion, illuminaManifestRecord.getSourceVersion(), "sourceVersion");
         validateEntryField(locusEntry.sourceStrand, illuminaManifestRecord.getSourceStrand(), "sourceStrand");
-        if (locusEntry.version == 4) {
+        if (locusEntry.getVersion() == 4) {
             validateEntryField(locusEntry.sourceSeq, illuminaManifestRecord.getSourceSeq(), "sourceSeq");
             validateEntryField(locusEntry.topGenomicSeq, illuminaManifestRecord.getTopGenomicSeq(), "topGenomicSeq");
         }
@@ -664,7 +672,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
 //            validateEntryField(locusEntry.expClusters, Integer.parseInt(record.getExpClusters()), "expClusters");
 //        }
 //        validateEntryField(locusEntry.intensityOnly, record.getIntensityOnly(), "intensityOnly");
-        if (locusEntry.version == 8) {
+        if (locusEntry.getVersion() == 8) {
             validateEntryField(locusEntry.refStrand, illuminaManifestRecord.getRefStrand(), "refStrand");
         }
     }

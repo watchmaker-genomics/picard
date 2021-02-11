@@ -1,7 +1,6 @@
 package picard.arrays.illumina;
 
 import htsjdk.samtools.reference.ReferenceSequenceFile;
-import picard.PicardException;
 
 import java.io.File;
 import java.util.Map;
@@ -15,6 +14,11 @@ public class ExtendedIlluminaManifestRecordCreator {
                                           final Map<String, File> chainFilesMap) {
         this.referenceFilesMap = referenceFilesMap;
         this.chainFilesMap = chainFilesMap;
+    }
+
+    public Build37ExtendedIlluminaManifestRecord createRecord(final IlluminaBPMLocusEntry locusEntry,
+                                                              final IlluminaManifestRecord record) {
+        return new Build37ExtendedIlluminaManifestRecord(locusEntry, record, referenceFilesMap, chainFilesMap);
     }
 
     public ExtendedIlluminaManifestRecord validateLocusEntryAndCreateExtendedRecord(final IlluminaBPMLocusEntry locusEntry,
