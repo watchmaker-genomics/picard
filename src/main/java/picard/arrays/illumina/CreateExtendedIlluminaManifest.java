@@ -89,6 +89,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
     public static final String VERSION = "1.6";
 
+    // TODO - Make the liftover completely optional
+
+
     @Override
     protected int doWork() {
 
@@ -160,10 +163,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 IlluminaBPMLocusEntry locusEntry = illuminaBPMLocusEntries[locusIndex++];
                 final IlluminaManifestRecord record = firstPassIterator.next();
 
-                creator.validateLocusEntryAndCreateExtendedRecord(locusEntry, record, false);
-
                 // Create an ExtendedIlluminaManifestRecord here so that we can get the (potentially lifted over) coordinates
-                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(record,
+                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
                         referenceSequenceMap, chainFilesMap, false, null);
                 manifestStatistics.updateStatistics(rec);
 
@@ -234,8 +235,10 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             log.info("Phase 3.  Generate the Extended Illumina Manifest");
             logger = new ProgressLogger(log, 10000);
             List<Build37ExtendedIlluminaManifestRecord> badRecords = new ArrayList<>();
+            locusIndex = 0;
             while (secondPassIterator.hasNext()) {
                 logger.record("0", 0);
+                IlluminaBPMLocusEntry locusEntry = illuminaBPMLocusEntries[locusIndex++];
                 final IlluminaManifestRecord record = secondPassIterator.next();
                 final String locus = record.getChr() + "." + record.getPosition();
                 String rsId;
@@ -244,7 +247,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 } else {
                     rsId = indelLocusToRsId.get(locus);
                 }
-                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(record,
+                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
                         referenceSequenceMap, chainFilesMap, dupeIndices.contains(record.getIndex()), rsId);
                 if (rec.isBad()) {
                     badRecords.add(rec);
@@ -325,10 +328,10 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
             if (!rec.isBad()) {
                 if (rec.isAmbiguous()) {
-                    if (rec.getCalculatedStrand() == Strand.NEGATIVE) {
+                    if (rec.getRefStrand() == Strand.NEGATIVE) {
                         numAmbiguousSnpsOnNegStrand++;
                     }
-                    if (rec.getCalculatedStrand() == Strand.POSITIVE) {
+                    if (rec.getRefStrand() == Strand.POSITIVE) {
                         numAmbiguousSnpsOnPosStrand++;
                     }
                 }

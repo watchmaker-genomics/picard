@@ -37,6 +37,8 @@ public class ExtendedIlluminaManifestRecord {
 //        }
 
 
+
+
     }
 
     public Build37ExtendedIlluminaManifestRecord.Flag getFlag() {

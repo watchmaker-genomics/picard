@@ -87,19 +87,25 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         PASS,
     }
 
+    private final IlluminaBPMLocusEntry locusEntry;
+    // TODO - switch over to using illuminaManifestRecord as a private member - do NOT extend it.
+    private final IlluminaManifestRecord illuminaManifestRecord;
+
     private String b37Chr;
     private Integer b37Pos;
     private String snpRefAllele;
     private String snpAlleleA;
     private String snpAlleleB;
-    private String rsId;
+    private final String rsId;
     private Flag flag = Flag.PASS;
 
     private Allele A;
     private Allele B;
     private Allele ref;
 
-    private Strand calculatedStrand;
+    // The refStrand if provided in the Illumina manifest, otherwise calculated
+    // TODO - probably rename this back to refStrand once this class no longer extends IlluminaManifestRecord
+    private Strand referenceStrand = null;
 
     private final Log log = Log.getInstance(Build37ExtendedIlluminaManifestRecord.class);
 
@@ -127,7 +133,12 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
      * It does not work to set the Extended-specific fields
      */
     Build37ExtendedIlluminaManifestRecord(final Map<String, Integer> columnNameToIndex, final String[] line, final int index) {
+        // TODO - I think this could be simplified to not necessarily rely on it including any of the Illumina Manifest records
+        // but that should be done in the calling method I think
+        // Not absolutely sure why this constructor needs to be here?
         super(columnNameToIndex, line, index);
+        this.locusEntry = null;     // TODO - don't like this.
+        this.illuminaManifestRecord = null;
 
         final int end = line.length;
         flag = Flag.valueOf(line[end - 1]);
@@ -157,6 +168,8 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         }
     }
 
+    // TODO - where is this constructor used?  Needed?
+    // Probably testing.
     Build37ExtendedIlluminaManifestRecord(final IlluminaManifestRecord record,
                                    final Flag flag,
                                    final String b37Chr,
@@ -166,6 +179,8 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
                                    final String snpAlleleB,
                                    final String rsId) {
         super(record);
+        this.locusEntry = null;
+        this.illuminaManifestRecord = null;
         this.flag = flag;
         this.b37Chr = b37Chr;
         this.b37Pos = b37Pos;
@@ -179,15 +194,35 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
      * This constructor is used to take a record from an Illumina Manifest and sets the Extended-specific fields
      * in preparation for writing out the Build37ExtendedIlluminaManifestRecord to file (or otherwise using it)
      */
-    Build37ExtendedIlluminaManifestRecord(final IlluminaManifestRecord record,
+    Build37ExtendedIlluminaManifestRecord(final IlluminaBPMLocusEntry locusEntry,
+                                          final IlluminaManifestRecord record,
                                    final Map<String, ReferenceSequenceFile> referenceFilesMap,
                                    final Map<String, File> chainFilesMap,
                                    final boolean dupe,
                                    final String passedRsId) {
         super(record);
+        this.locusEntry = locusEntry;
+        this.illuminaManifestRecord = record;
 
-        validate(record, dupe);
+        boolean stringent_validation = true;
 
+        // Check that the fields in the bpm agree with those in the (CSV) manifest.
+        validateBpmLocusEntryAgainstIlluminaManifestRecord();
+
+        // New:
+        //set dupe first so it can be overridden by fail flags
+        if (dupe) flag = Flag.DUPE;
+
+        // Look for entries which Illumina has marked as invalid
+        if (getChrom().equals(IlluminaManifestRecord.ILLUMINA_FLAGGED_BAD_CHR)) {
+            flag = Build37ExtendedIlluminaManifestRecord.Flag.ILLUMINA_FLAGGED;
+        }
+//
+//        if (!r.getMajorGenomeBuild().trim().equals(BUILD_36) && !r.getMajorGenomeBuild().trim().equals(BUILD_37)) {
+//            flag = Build37ExtendedIlluminaManifestRecord.Flag.UNSUPPORTED_GENOME_BUILD;
+//        }
+
+        // TODO - figure out how to do this with and without liftover files
         if (!isBad()) {
             if (getMajorGenomeBuild().trim().equals(BUILD_37)) {
                 // no liftover needed
@@ -200,20 +235,16 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
 
         final ReferenceSequenceFile refFile = referenceFilesMap.get(BUILD_37);
 
+        if (!isBad()) {
+            if (isSnp()) {      // TODO - will need to do this for indels too.
+                setReferenceStrand(refFile, stringent_validation);
+            }
+        }
+
         rsId = passedRsId == null ? "" : passedRsId;
         if (!isBad()) {
             if (isSnp()) {
-                final String probeSeq;
-                if (isAmbiguous()) {
-                    //ambiguous snps contain the probed base so we need to truncate the string
-                    probeSeq = getAlleleAProbeSeq().substring(0, getAlleleAProbeSeq().length() - 1);
-                } else {
-                    probeSeq = getAlleleAProbeSeq();
-                }
-                calculatedStrand = getStrand(refFile, probeSeq);
-                if (!isBad()) {     // getStrand may flag a record as bad.
-                    populateSnpAlleles(refFile, calculatedStrand);
-                }
+                processSnp(refFile);
             } else {
                 processIndel(refFile);
             }
@@ -242,9 +273,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         return ref;
     }
 
-    public Strand getCalculatedStrand() {
-        return calculatedStrand;
-    }
+    public Strand getReferenceStrand() { return referenceStrand; }
 
     public String getB37Chr() {
         return b37Chr;
@@ -266,20 +295,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
 
     public Flag getFlag() {
         return flag;
-    }
-
-    private void validate(final IlluminaManifestRecord r, boolean dupe) {
-        //set dupe first so it can be overridden by fail flags
-        if (dupe) flag = Flag.DUPE;
-
-        // Look for entries which Illumina has marked as invalid
-        if (r.getChr().trim().equals(ILLUMINA_FLAGGED_BAD_CHR)) {
-            flag = Flag.ILLUMINA_FLAGGED;
-        }
-
-        if (!r.getMajorGenomeBuild().trim().equals(BUILD_36) && !r.getMajorGenomeBuild().trim().equals(BUILD_37)) {
-            flag = Flag.UNSUPPORTED_GENOME_BUILD;
-        }
     }
 
     /**
@@ -315,35 +330,38 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     }
 
     /**
-     * Uses source sequence to determine snpAlleleA, snpAlleleB, and snpRefAllele.
+     * Uses source sequence to determine snpAlleleA, snpAlleleB, and Allele.
      * <p>
-     * In this context, variant is either a SNP or an indel.
      */
-    private void populateSnpAlleles(final ReferenceSequenceFile refFile, final Strand strand) {
+    private void processSnp(final ReferenceSequenceFile refFile) {
         snpAlleleA = getSnp().substring(1, 2);
         snpAlleleB = getSnp().substring(3, 4);
 
-        if (strand == Strand.NEGATIVE) {
+        if (referenceStrand == Strand.NEGATIVE) {
             snpAlleleA = SequenceUtil.reverseComplement(snpAlleleA);
             snpAlleleB = SequenceUtil.reverseComplement(snpAlleleB);
         }
 
         //extra validation for ambiguous snps
+        // TODO - is this really needed??  Or
         if (isAmbiguous()) {
             if (getAlleleBProbeSeq() != null) {
                 String probeAAllele = getAlleleAProbeSeq().substring(getAlleleAProbeSeq().length() - 1);
                 String probeBAllele = getAlleleBProbeSeq().substring(getAlleleBProbeSeq().length() - 1);
-                if (!probeAAllele.equals(snpAlleleA) && !probeBAllele.equals(snpAlleleB) && (strand == Strand.POSITIVE)) {
+                if (!probeAAllele.equals(snpAlleleA) && !probeBAllele.equals(snpAlleleB) && (referenceStrand == Strand.POSITIVE)) {
                     snpAlleleA = probeAAllele;
                     snpAlleleB = probeBAllele;
                 }
             } else {
                 // This manifest contains no Allele B Probe Sequence.  We (currently) need this for validating/trusting
                 // these ambiguous SNPs, so we are flagging it.
+
+                // This should be an error?
                 log.warn("Ambiguous probe without alleleBProbeSeq!!!  Record: " + this);
             }
         }
 
+        // TODO - should I validate this further?  How?
         snpRefAllele = getSequenceAt(refFile, b37Chr, b37Pos, b37Pos);
     }
 
@@ -354,7 +372,8 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
             throw new PicardException("AlleleAProbeSeq for record: " + this + " contains non-ACGT character(s)");
         }
 
-        Strand refStrand = getRefStrand();
+        // TODO - Indel processing is doing something different for finding the refStrand than SNP processing is/was.
+        Strand refStrand = illuminaManifestRecord.getRefStrand();
         if (refStrand == Strand.NONE) {
             // Some Illumina manifests do not have ref_strand defined.  We will use the illumina strand instead.
             if (getIlmnStrand() == IlluminaStrand.PLUS)  {
@@ -471,28 +490,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         }
     }
 
-    private Strand getStrand(final ReferenceSequenceFile refFile, final String probeSeq) {
-        Strand strand = Strand.NONE;
-        // Should use lifted over b37 coordinates!!!
-        final String reference = getSequenceAt(refFile, b37Chr, b37Pos - probeSeq.length(), b37Pos - 1);
-        final String reverseReference = SequenceUtil.reverseComplement(getSequenceAt(refFile, b37Chr, b37Pos + 1, b37Pos + probeSeq.length()));
-
-        if (reference.equals(probeSeq)) {
-            strand = Strand.POSITIVE;
-        } else if (reverseReference.equals(probeSeq)) {
-            strand = Strand.NEGATIVE;
-        } else {
-            flag = Flag.PROBE_SEQUENCE_MISMATCH;
-            log.warn("Error in getStrand.  Record:" + this);
-            log.warn("  Couldn't find alleleAProbeSeq in reference");
-            log.debug("  AlleleAProbeSeq: " + getAlleleAProbeSeq());
-            log.debug("  Reference:       " + reference);
-            log.debug("  Reverse Ref:     " + reverseReference);
-        }
-
-        return strand;
-    }
-
     static SequenceAndIndex findSubsequence(final String seq, final String region) {
         SequenceAndIndex sequenceAndIndex = new SequenceAndIndex(seq, -1);
 
@@ -554,6 +551,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
      * @return The partial reference sequence associated with this range.
      */
     private static String getSequenceAt(final ReferenceSequenceFile refFile, final String chr, final int startPos, final int endPos) {
+        // TODO - should I just cache the contig lengths?
         final int contigLength = refFile.getSequenceDictionary().getSequence(chr).getSequenceLength();
         int usedEndPos = Math.min(endPos, contigLength);
         return new String(refFile.getSubsequenceAt(chr, startPos, usedEndPos).getBases()).toUpperCase();
@@ -576,6 +574,105 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
             return matcher;
         } else {
             throw new PicardException("Could not find the pattern V[W/X]Y in the SourceSeq: " + sourceSeq);
+        }
+    }
+
+    /**
+     * This method sets the reference strand
+     *
+     * If the refStrand is provided in the Illumina manifest(s) we will use that.
+     * Unless 'stringent_validation' is in use OR the refStrand is NOT provided in the Illumina manifest we will
+     * attempt to calculate the reference strand by finding the probe sequence in the reference.
+     *
+     * @param refFile reference to use for finding the probe sequence
+     * @param stringent_validation when set, the code will do more rigorous checking of the Illumina manifest.
+     */
+    private void setReferenceStrand(final ReferenceSequenceFile refFile, final boolean stringent_validation) {
+        if (referenceStrand != null) {
+            return;
+        }
+
+        referenceStrand = locusEntry.refStrand;
+        if ((referenceStrand.equals(Strand.NONE)) || (stringent_validation)) {
+            // Should do a warning (at the top level?)
+
+            final String probeSeq;
+            if (isAmbiguous()) {
+                //ambiguous snps contain the probed base so we need to truncate the string
+                probeSeq = getAlleleAProbeSeq().substring(0, getAlleleAProbeSeq().length() - 1);
+            } else {
+                probeSeq = getAlleleAProbeSeq();
+            }
+
+            // Should use lifted over b37 coordinates!!!
+            final String reference = getSequenceAt(refFile, b37Chr, b37Pos - probeSeq.length(), b37Pos - 1);
+            final String reverseReference = SequenceUtil.reverseComplement(getSequenceAt(refFile, b37Chr, b37Pos + 1, b37Pos + probeSeq.length()));
+
+            if (reference.equals(probeSeq)) {
+                referenceStrand = Strand.POSITIVE;
+            } else if (reverseReference.equals(probeSeq)) {
+                referenceStrand = Strand.NEGATIVE;
+            } else {
+                flag = Flag.PROBE_SEQUENCE_MISMATCH;
+                log.warn("Error in getStrand.  Record:" + this);
+                log.warn("  Couldn't find alleleAProbeSeq in reference");
+                log.debug("  AlleleAProbeSeq: " + getAlleleAProbeSeq());
+                log.debug("  Reference:       " + reference);
+                log.debug("  Reverse Ref:     " + reverseReference);
+                return;
+            }
+            if ((!locusEntry.refStrand.equals(Strand.NONE)) && (!referenceStrand.equals(locusEntry.refStrand))) {
+                // This should be an error.
+                throw new PicardException("Calculated Reference Strand differs from Reference Strand provided in Illumina Manifest");
+            }
+        }
+    }
+
+    private String getChrom() {
+        // TODO - previously I did a '.trim()
+        return locusEntry.chrom;
+    }
+
+    private void validateBpmLocusEntryAgainstIlluminaManifestRecord() {
+        validateEntryField(locusEntry.ilmnId, illuminaManifestRecord.getIlmnId(), "ilmnId");
+        validateEntryField(locusEntry.name, illuminaManifestRecord.getName(), "name");
+        validateEntryField(locusEntry.ilmnStrand, illuminaManifestRecord.getIlmnStrand(), "ilmnStrand");
+        validateEntryField(locusEntry.snp, illuminaManifestRecord.getSnp(), "snp");
+        validateEntryField(locusEntry.chrom, illuminaManifestRecord.getChr(), "chrom");
+        validateEntryField(locusEntry.ploidy, illuminaManifestRecord.getPloidy(), "ploidy");
+        validateEntryField(locusEntry.species, illuminaManifestRecord.getSpecies(), "species");
+        validateEntryField(locusEntry.mapInfo, illuminaManifestRecord.getPosition(), "mapInfo");
+        validateEntryField(locusEntry.addressA, Integer.parseInt(illuminaManifestRecord.getAddressAId()), "addressAId");
+        if (locusEntry.version == 4) {
+            validateEntryField(locusEntry.alleleAProbeSeq, illuminaManifestRecord.getAlleleAProbeSeq(), "alleleAProbeSeq");
+        }
+        if ((locusEntry.addressB != -1) && (illuminaManifestRecord.getAddressBId() != null)) {
+            validateEntryField(locusEntry.addressB, Integer.parseInt(illuminaManifestRecord.getAddressBId()), "addressBId");
+        }
+        if (locusEntry.version == 4) {
+            validateEntryField(locusEntry.alleleBProbeSeq, illuminaManifestRecord.getAlleleBProbeSeq(), "alleleBProbeSeq");
+        }
+        validateEntryField(locusEntry.genomeBuild, illuminaManifestRecord.getGenomeBuild(), "genomeBuild");
+        validateEntryField(locusEntry.source, illuminaManifestRecord.getSource(), "source");
+        validateEntryField(locusEntry.sourceVersion, illuminaManifestRecord.getSourceVersion(), "sourceVersion");
+        validateEntryField(locusEntry.sourceStrand, illuminaManifestRecord.getSourceStrand(), "sourceStrand");
+        if (locusEntry.version == 4) {
+            validateEntryField(locusEntry.sourceSeq, illuminaManifestRecord.getSourceSeq(), "sourceSeq");
+            validateEntryField(locusEntry.topGenomicSeq, illuminaManifestRecord.getTopGenomicSeq(), "topGenomicSeq");
+        }
+//        if (record.getExpClusters() != null) {
+//            validateEntryField(locusEntry.expClusters, Integer.parseInt(record.getExpClusters()), "expClusters");
+//        }
+//        validateEntryField(locusEntry.intensityOnly, record.getIntensityOnly(), "intensityOnly");
+        if (locusEntry.version == 8) {
+            validateEntryField(locusEntry.refStrand, illuminaManifestRecord.getRefStrand(), "refStrand");
+        }
+    }
+
+    private void validateEntryField(final Object locusEntryField, final Object recordField, final String fieldName) {
+        // TODO - should this just be a non-passing entry?  Probably so.
+        if (!locusEntryField.equals(recordField)) {
+            throw new PicardException("Field '" + fieldName + "' disagrees between BPM file (found '" + locusEntryField + "') and CSV (found: '" + recordField + "')");
         }
     }
 
