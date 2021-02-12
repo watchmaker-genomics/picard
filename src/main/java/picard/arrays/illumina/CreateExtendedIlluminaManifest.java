@@ -1,6 +1,5 @@
 package picard.arrays.illumina;
 
-import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.reference.ReferenceSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory;
@@ -140,10 +139,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             final Iterator<IlluminaManifestRecord> firstPassIterator = manifestFile.iterator();
 
             ManifestStatistics manifestStatistics = new ManifestStatistics();
-
-            //grab the dictionary from the VCF and use it in the IntervalList
-            final SAMFileHeader samFileHeader = new SAMFileHeader();
-            samFileHeader.setSequenceDictionary(sequenceDictionary);
 //
 //            List<Build37ExtendedIlluminaManifestRecord> records = new ArrayList<>();
 
@@ -216,7 +211,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 throw new PicardException("Error reading cluster file '" + CLUSTER_FILE.getAbsolutePath() + "'", e);
             }
 
-            // TODO - you are flagging as dupes SNPs and Indels together.
             // evaluate each coordinate assay and remove the assay with the best GenTrain score (all remaining are dupes)
             dupeMap.entrySet().forEach(entry ->
                     entry.getValue().remove(entry.getValue().stream().max(Comparator.comparingDouble(assay ->
