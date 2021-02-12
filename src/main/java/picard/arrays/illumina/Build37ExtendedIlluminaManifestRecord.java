@@ -83,6 +83,9 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         /** @deprecated - but used in existing extended manifest files. */
         @Deprecated
         INDEL_EXTENSION_ERROR,
+
+        /** The calculated reference strand differs from that specified in the manifest (stringent_validation only). */
+        CALC_REF_STRAND_MISMATCH,
         DUPE,
         PASS,
     }
@@ -211,10 +214,10 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         if (locusEntry.chrom.equals(IlluminaManifestRecord.ILLUMINA_FLAGGED_BAD_CHR)) {
             flag = Build37ExtendedIlluminaManifestRecord.Flag.ILLUMINA_FLAGGED;
         }
-//
-//        if (!r.getMajorGenomeBuild().trim().equals(BUILD_36) && !r.getMajorGenomeBuild().trim().equals(BUILD_37)) {
-//            flag = Build37ExtendedIlluminaManifestRecord.Flag.UNSUPPORTED_GENOME_BUILD;
-//        }
+
+        if (!illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_36) && !illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_37)) {
+            flag = Build37ExtendedIlluminaManifestRecord.Flag.UNSUPPORTED_GENOME_BUILD;
+        }
 
         // TODO - figure out how to do this with and without liftover files
         if (!isBad()) {
@@ -615,8 +618,9 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
                 return;
             }
             if ((!locusEntry.refStrand.equals(Strand.NONE)) && (!referenceStrand.equals(locusEntry.refStrand))) {
-                // This should be an error.
-                throw new PicardException("Calculated Reference Strand differs from Reference Strand provided in Illumina Manifest");
+                flag = Flag.CALC_REF_STRAND_MISMATCH;
+                log.warn("Error in getStrand.  Record:" + this);
+                log.warn("  The calculated refStrand (" + referenceStrand + ") differs from that specified in the manifest (" + locusEntry.refStrand + ")");
             }
         }
     }

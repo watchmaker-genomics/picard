@@ -330,6 +330,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         int numOnBuild36;
         int numOnOtherBuild;
         int numLiftoverFailed;
+        int numRefStrandMismatch;
 
         void updateStatistics(Build37ExtendedIlluminaManifestRecord rec) {
             numAssays++;
@@ -347,6 +348,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
             if (rec.getFlag().equals(Build37ExtendedIlluminaManifestRecord.Flag.LIFTOVER_FAILED)) {
                 numLiftoverFailed++;
+            }
+            if (rec.getFlag().equals(Build37ExtendedIlluminaManifestRecord.Flag.CALC_REF_STRAND_MISMATCH)) {
+                numRefStrandMismatch++;
             }
             if (!rec.isBad()) {
                 if (rec.isAmbiguous()) {
@@ -400,13 +404,32 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         void logStatistics(File output) throws IOException {
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
                     new FileOutputStream(output), StandardCharsets.UTF_8))) {
-                writer.write("Number of assays written: " + numAssays);
+                writer.write("Number of Assays: " + numAssays);
                 writer.newLine();
-                writer.write("Number of assays flagged: " + numAssaysFlagged);
+
+                writer.write("Number of Assays on Build37: " + numOnBuild37);
+                writer.newLine();
+                writer.write("Number of Assays on Build36: " + numOnBuild36);
+                writer.newLine();
+                writer.write("Number of Assays on Other Build: " + numOnOtherBuild);
+                writer.newLine();
+                writer.write("Number of Assays failing liftover: " + numLiftoverFailed);
+                writer.newLine();
+                writer.write("Number of Assays on Build 37 or successfully lifted over: " + numOnBuild37 + (numOnBuild36 - numLiftoverFailed));
+                writer.newLine();
+
+                writer.write("Number of Assays flagged: " + numAssaysFlagged);
                 writer.newLine();
                 writer.write("Number of SNPs: " + numSnps);
                 writer.newLine();
+                writer.write("Number of Passing SNPs: " + (numSnps - numSnpsFlagged));
+                writer.newLine();
                 writer.write("Number of SNPs flagged: " + numSnpsFlagged);
+                writer.newLine();
+                // Need categories for # of SNPs / Indels on other builds and # on build 36 that fail liftover.
+
+                // Note - currently this is only calculated for SNPs - that's why it's not in the indel section too.
+                writer.write("Number of SNPs flagged for refStrand mismatch: "  + numRefStrandMismatch);
                 writer.newLine();
                 writer.write("Number of SNPs flagged for sequence mismatch: " + numSnpProbeSequenceMismatch);
                 writer.newLine();
@@ -415,7 +438,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.write("Number of ambiguous SNPs on Negative Strand: " + numAmbiguousSnpsOnNegStrand);
                 writer.newLine();
 
-                writer.write("Number of Indels: " + numIndels);
+                writer.write("Number of Passing Indels: " + (numIndels - numIndelsFlagged));
                 writer.newLine();
                 writer.write("Number of Indels flagged: " + numIndelsFlagged);
                 writer.newLine();
@@ -432,15 +455,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.write("Number of Indels not found: " + numIndelsNotFound);
                 writer.newLine();
                 writer.write("Number of Indels flagged for conflict: " + numIndelConfict);
-                writer.newLine();
-
-                writer.write("Number of assays on Build37: " + numOnBuild37);
-                writer.newLine();
-                writer.write("Number of assays on Build36: " + numOnBuild36);
-                writer.newLine();
-                writer.write("Number of assays on Other Build: " + numOnOtherBuild);
-                writer.newLine();
-                writer.write("Number of assays failing liftover: " + numLiftoverFailed);
                 writer.newLine();
             }
         }

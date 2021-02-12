@@ -359,4 +359,14 @@ public class IlluminaManifestRecord {
     public int getIndex() {
         return index;
     }
+
+    @Override
+    public String toString() {
+        return "IlluminaManifestRecord{" +
+                "name='" + name + '\'' +
+                ", snp='" + snp + '\'' +
+                ", chr='" + chr + '\'' +
+                ", position=" + position +
+                '}';
+    }
 }
