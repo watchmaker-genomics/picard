@@ -132,7 +132,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
             IlluminaBPMLocusEntry[] illuminaBPMLocusEntries = illuminaBPMFile.getLocusEntries();
 
-            ExtendedIlluminaManifestRecordCreator creator = new ExtendedIlluminaManifestRecordCreator(referenceSequenceMap, chainFilesMap);
+//            ExtendedIlluminaManifestRecordCreator creator = new ExtendedIlluminaManifestRecordCreator(referenceSequenceMap, chainFilesMap);
+            Build37ExtendedIlluminaManifestRecordCreator creator = new Build37ExtendedIlluminaManifestRecordCreator(referenceSequenceMap, chainFilesMap);
 
             // first iteration through the manifest to find all dupes
             log.info("Phase 1.  First Pass through the manifest.  Build coordinate map for dupe flagging and make SNP and indel-specific interval lists for parsing dbSnp");
@@ -152,12 +153,19 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 final IlluminaManifestRecord record = firstPassIterator.next();
 
                 // Create an ExtendedIlluminaManifestRecord here so that we can get the (potentially lifted over) coordinates
-                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
-                        referenceSequenceMap, chainFilesMap);
+                final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
+//                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
+//                        referenceSequenceMap, chainFilesMap);
 //                records.add(rec);
                 manifestStatistics.updateStatistics(rec);
 
                 // A DUP is only a DUP if it's at the same location AND has the same alleles...
+//                log.info("CHR: " + rec.getB37Chr());
+//                log.info("POS: " + rec.getB37Pos());
+//                log.info("A: " + rec.getAlleleA());
+//                log.info("B: " + rec.getAlleleB());
+                // TODO - you're not doing a '.toString' at the end!!!
+                // TODO - And you should exclude Fails from this list...
                 String key = rec.getB37Chr() + ":" + rec.getB37Pos() + "." + rec.getAlleleA().toString() + "." + rec.getAlleleB();
                 if (coordinateMap.containsKey(key)) {
                     coordinateMap.get(key).add(record);
@@ -266,8 +274,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 } else {
                     rsId = indelLocusToRsId.get(locus);
                 }
-                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
-                        referenceSequenceMap, chainFilesMap);
+                final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
                 rec.setRsId(rsId);
                 if (rec.isBad()) {
                     badRecords.add(rec);
@@ -339,9 +346,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             } else {
                 numIndels++;
             }
-            if (rec.getMajorGenomeBuild().equals(Build37ExtendedIlluminaManifestRecord.BUILD_37)) {
+            if (rec.getMajorGenomeBuild().equals(Build37ExtendedIlluminaManifestRecordCreator.BUILD_37)) {
                 numOnBuild37++;
-            } else if (rec.getMajorGenomeBuild().equals(Build37ExtendedIlluminaManifestRecord.BUILD_36)) {
+            } else if (rec.getMajorGenomeBuild().equals(Build37ExtendedIlluminaManifestRecordCreator.BUILD_36)) {
                 numOnBuild36++;
             } else {
                 numOnOtherBuild++;

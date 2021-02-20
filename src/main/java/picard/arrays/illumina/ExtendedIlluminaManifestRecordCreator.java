@@ -16,16 +16,4 @@ public class ExtendedIlluminaManifestRecordCreator {
         this.chainFilesMap = chainFilesMap;
     }
 
-    public Build37ExtendedIlluminaManifestRecord createRecord(final IlluminaBPMLocusEntry locusEntry,
-                                                              final IlluminaManifestRecord record) {
-        return new Build37ExtendedIlluminaManifestRecord(locusEntry, record, referenceFilesMap, chainFilesMap);
-    }
-
-    public ExtendedIlluminaManifestRecord validateLocusEntryAndCreateExtendedRecord(final IlluminaBPMLocusEntry locusEntry,
-                                                                                    final IlluminaManifestRecord illuminaManifestRecord,
-                                                                                    final boolean dupe) {
-        ExtendedIlluminaManifestRecord record = new ExtendedIlluminaManifestRecord(locusEntry, illuminaManifestRecord, dupe);
-        return record;
-    }
-
 }
