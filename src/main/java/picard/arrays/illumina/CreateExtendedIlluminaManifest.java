@@ -140,8 +140,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             final Iterator<IlluminaManifestRecord> firstPassIterator = manifestFile.iterator();
 
             ManifestStatistics manifestStatistics = new ManifestStatistics();
-//
-//            List<Build37ExtendedIlluminaManifestRecord> records = new ArrayList<>();
+
+            List<Build37ExtendedIlluminaManifestRecord> records = new ArrayList<>();
 
             int locusIndex = 0;
             while (firstPassIterator.hasNext()) {
@@ -156,14 +156,10 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
 //                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
 //                        referenceSequenceMap, chainFilesMap);
-//                records.add(rec);
+                records.add(rec);
                 manifestStatistics.updateStatistics(rec);
 
                 // A DUP is only a DUP if it's at the same location AND has the same alleles...
-//                log.info("CHR: " + rec.getB37Chr());
-//                log.info("POS: " + rec.getB37Pos());
-//                log.info("A: " + rec.getAlleleA());
-//                log.info("B: " + rec.getAlleleB());
                 // TODO - you're not doing a '.toString' at the end!!!
                 // TODO - And you should exclude Fails from this list...
                 String key = rec.getB37Chr() + ":" + rec.getB37Pos() + "." + rec.getAlleleA().toString() + "." + rec.getAlleleB();
@@ -219,6 +215,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 throw new PicardException("Error reading cluster file '" + CLUSTER_FILE.getAbsolutePath() + "'", e);
             }
 
+            // TODO - next steps - make dup flagging it's own method, make it a CLP option (default is on) and don't require the EGT if you aren't doing it.
+
             // evaluate each coordinate assay and remove the assay with the best GenTrain score (all remaining are dupes)
             dupeMap.entrySet().forEach(entry ->
                     entry.getValue().remove(entry.getValue().stream().max(Comparator.comparingDouble(assay ->
@@ -232,8 +230,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                     .boxed().collect(Collectors.toList());
             dupeMap.clear();
 
-            final IlluminaManifest secondPassManifestFile = new IlluminaManifest(INPUT);
-            final Iterator<IlluminaManifestRecord> secondPassIterator = secondPassManifestFile.iterator();
+//            final IlluminaManifest secondPassManifestFile = new IlluminaManifest(INPUT);
+//            final Iterator<IlluminaManifestRecord> secondPassIterator = secondPassManifestFile.iterator();
 
             final BufferedWriter out = new BufferedWriter(new FileWriter(OUTPUT, false));
             writeExtendedIlluminaManifestHeaders(manifestFile, out);
@@ -243,30 +241,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             logger = new ProgressLogger(log, 10000);
 
             List<Build37ExtendedIlluminaManifestRecord> badRecords = new ArrayList<>();
-//            for (Build37ExtendedIlluminaManifestRecord record: records) {
-//                logger.record("0", 0);
-//                final String locus = record.getChr() + "." + record.getPosition();
-//                String rsId;
-//                if (record.isSnp()) {
-//                    rsId = snpLocusToRsId.get(locus);
-//                } else {
-//                    rsId = indelLocusToRsId.get(locus);
-//                }
-//                record.setRsId(rsId);
-//                if (record.isBad()) {
-//                    badRecords.add(record);
-//                } else {
-//                    record.setDupe(dupeIndices.contains(record.getIndex()));
-//                }
-//                out.write(record.getLine());
-//                out.newLine();
-//            }
-
-            locusIndex = 0;
-            while (secondPassIterator.hasNext()) {
+            for (Build37ExtendedIlluminaManifestRecord record: records) {
                 logger.record("0", 0);
-                IlluminaBPMLocusEntry locusEntry = illuminaBPMLocusEntries[locusIndex++];
-                final IlluminaManifestRecord record = secondPassIterator.next();
                 final String locus = record.getChr() + "." + record.getPosition();
                 String rsId;
                 if (record.isSnp()) {
@@ -274,16 +250,38 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 } else {
                     rsId = indelLocusToRsId.get(locus);
                 }
-                final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
-                rec.setRsId(rsId);
-                if (rec.isBad()) {
-                    badRecords.add(rec);
+                record.setRsId(rsId);
+                if (record.isBad()) {
+                    badRecords.add(record);
                 } else {
-                    rec.setDupe(dupeIndices.contains(record.getIndex()));
+                    record.setDupe(dupeIndices.contains(record.getIndex()));
                 }
-                out.write(rec.getLine());
+                out.write(record.getLine());
                 out.newLine();
             }
+
+//            locusIndex = 0;
+//            while (secondPassIterator.hasNext()) {
+//                logger.record("0", 0);
+//                IlluminaBPMLocusEntry locusEntry = illuminaBPMLocusEntries[locusIndex++];
+//                final IlluminaManifestRecord record = secondPassIterator.next();
+//                final String locus = record.getChr() + "." + record.getPosition();
+//                String rsId;
+//                if (record.isSnp()) {
+//                    rsId = snpLocusToRsId.get(locus);
+//                } else {
+//                    rsId = indelLocusToRsId.get(locus);
+//                }
+//                final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
+//                rec.setRsId(rsId);
+//                if (rec.isBad()) {
+//                    badRecords.add(rec);
+//                } else {
+//                    rec.setDupe(dupeIndices.contains(record.getIndex()));
+//                }
+//                out.write(rec.getLine());
+//                out.newLine();
+//            }
 
             out.flush();
             out.close();
@@ -422,7 +420,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.write("Number of Assays failing liftover: " + numLiftoverFailed);
                 writer.newLine();
-                writer.write("Number of Assays on Build 37 or successfully lifted over: " + numOnBuild37 + (numOnBuild36 - numLiftoverFailed));
+                writer.write("Number of Assays on Build 37 or successfully lifted over: " + (numOnBuild37 + (numOnBuild36 - numLiftoverFailed)));
                 writer.newLine();
 
                 writer.write("Number of Assays flagged: " + numAssaysFlagged);

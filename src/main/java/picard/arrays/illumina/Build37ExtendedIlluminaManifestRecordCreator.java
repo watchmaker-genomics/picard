@@ -422,8 +422,8 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
             return;
         }
 
-        build37ExtendedIlluminaManifestRecord.referenceStrand = locusEntry.refStrand;
-        if ((build37ExtendedIlluminaManifestRecord.referenceStrand.equals(Strand.NONE)) || (stringent_validation)) {
+//        build37ExtendedIlluminaManifestRecord.referenceStrand = locusEntry.refStrand;
+//        if ((build37ExtendedIlluminaManifestRecord.referenceStrand.equals(Strand.NONE)) || (stringent_validation)) {
             // Should do a warning (at the top level?)
 
             final String probeSeq;
@@ -443,20 +443,21 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
             } else if (reverseReference.equals(probeSeq)) {
                 build37ExtendedIlluminaManifestRecord.referenceStrand = Strand.NEGATIVE;
             } else {
+                // TODO - if you have the Illumina-supplied refstrand, and you are in stringent mode this is an error I guess...
                 build37ExtendedIlluminaManifestRecord.flag = Build37ExtendedIlluminaManifestRecord.Flag.PROBE_SEQUENCE_MISMATCH;
                 log.warn("Error in getStrand.  Record:" + build37ExtendedIlluminaManifestRecord);
                 log.warn("  Couldn't find alleleAProbeSeq in reference");
                 log.debug("  AlleleAProbeSeq: " + illuminaManifestRecord.getAlleleAProbeSeq());
                 log.debug("  Reference:       " + reference);
                 log.debug("  Reverse Ref:     " + reverseReference);
-                return;
+//                return;
             }
-            if ((!locusEntry.refStrand.equals(Strand.NONE)) && (!build37ExtendedIlluminaManifestRecord.referenceStrand.equals(locusEntry.refStrand))) {
-                build37ExtendedIlluminaManifestRecord.flag = Build37ExtendedIlluminaManifestRecord.Flag.CALC_REF_STRAND_MISMATCH;
-                log.warn("Error in getStrand.  Record:" + build37ExtendedIlluminaManifestRecord);
-                log.warn("  The calculated refStrand (" + build37ExtendedIlluminaManifestRecord.referenceStrand + ") differs from that specified in the manifest (" + locusEntry.refStrand + ")");
-            }
-        }
+//            if ((!locusEntry.refStrand.equals(Strand.NONE)) && (!build37ExtendedIlluminaManifestRecord.referenceStrand.equals(locusEntry.refStrand))) {
+//                build37ExtendedIlluminaManifestRecord.flag = Build37ExtendedIlluminaManifestRecord.Flag.CALC_REF_STRAND_MISMATCH;
+//                log.warn("Error in getStrand.  Record:" + build37ExtendedIlluminaManifestRecord);
+//                log.warn("  The calculated refStrand (" + build37ExtendedIlluminaManifestRecord.referenceStrand + ") differs from that specified in the manifest (" + locusEntry.refStrand + ")");
+//            }
+//        }
     }
 
     /**
