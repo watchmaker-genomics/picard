@@ -145,8 +145,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             log.info("Phase 1.  First Pass through the manifest.  Build coordinate map for dupe flagging and make SNP and indel-specific interval lists for parsing dbSnp");
             final Iterator<IlluminaManifestRecord> firstPassIterator = manifestFile.iterator();
 
-            ManifestStatistics manifestStatistics = new ManifestStatistics();
-
             List<Build37ExtendedIlluminaManifestRecord> records = new ArrayList<>();
 
             int locusIndex = 0;
@@ -161,7 +159,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 // Create an ExtendedIlluminaManifestRecord here so that we can get the (potentially lifted over) coordinates
                 final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
                 records.add(rec);
-                manifestStatistics.updateStatistics(rec);
 
                 if (!rec.isBad()) {
                     final int length = Integer.max(rec.getAlleleA().length(), rec.getAlleleB().length());
@@ -202,6 +199,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             // second iteration to write all records after dupe evaluation
             log.info("Phase 3.  Generate the Extended Illumina Manifest");
             logger = new ProgressLogger(log, 10000);
+            ManifestStatistics manifestStatistics = new ManifestStatistics();
 
             List<Build37ExtendedIlluminaManifestRecord> badRecords = new ArrayList<>();
             for (Build37ExtendedIlluminaManifestRecord record: records) {
@@ -221,6 +219,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                         record.setDupe(dupeIndices.contains(record.getIndex()));
                     }
                 }
+                manifestStatistics.updateStatistics(record);
                 out.write(record.getLine());
                 out.newLine();
             }
@@ -243,6 +242,15 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             // A DUP is only a DUP if it's at the same location AND has the same alleles...
             // TODO - And you should exclude Fails from this list...
             String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
+            // TODO - NOTE - This fixes bug # 1 (Duplicate flagging)  We generated the key for duplicating as coordinates, then an ordered list of allele A and B
+            //   We weren't handling the case that either A or B could be ref.
+            String key1 = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele();
+            if (!record.getSnpAlleleA().equals(record.getSnpRefAllele())) {
+                key1 += "." + record.getSnpAlleleA();
+            }
+            if (!record.getSnpAlleleB().equals(record.getSnpAlleleA()) && !(record.getSnpAlleleB().equals(record.getSnpRefAllele()))) {
+                key1 += "." + record.getSnpAlleleB();
+            }
             if (coordinateMap.containsKey(key)) {
                 coordinateMap.get(key).add(record);
             } else {
@@ -304,14 +312,18 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
     private static class ManifestStatistics {
         int numAssays;
-        int numSnps;
-        int numIndels;
         int numAssaysFlagged;
+        int numAssaysDuplicated;        // The number of passing assays which are flagged as duplicates
+
+        int numSnps;
+        int numSnpsDuplicated;          // The number of passing SNP assays which are flagged as duplicates
         int numSnpsFlagged;
         int numSnpProbeSequenceMismatch;
         int numAmbiguousSnpsOnPosStrand;
         int numAmbiguousSnpsOnNegStrand;
 
+        int numIndels;
+        int numIndelsDuplicated;        // The number of passing SNP assays which are flagged as duplicates
         int numIndelsFlagged;
         int numIndelProbeSequenceMismatch;
         int numIndelProbeSequenceStrandInvalid;
@@ -348,6 +360,14 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 numRefStrandMismatch++;
             }
             if (!rec.isBad()) {
+                if (rec.isDupe()) {
+                    numAssaysDuplicated++;
+                    if (rec.isSnp()) {
+                        numSnpsDuplicated++;
+                    } else {
+                        numIndelsDuplicated++;
+                    }
+                }
                 if (rec.isAmbiguous()) {
                     if (rec.getRefStrand() == Strand.NEGATIVE) {
                         numAmbiguousSnpsOnNegStrand++;
@@ -399,7 +419,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         void logStatistics(File output) throws IOException {
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
                     new FileOutputStream(output), StandardCharsets.UTF_8))) {
-                writer.write("Number of Assays: " + numAssays);
+                writer.write("Total Number of Assays: " + numAssays);
                 writer.newLine();
 
                 writer.write("Number of Assays on Build37: " + numOnBuild37);
@@ -412,12 +432,20 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.write("Number of Assays on Build 37 or successfully lifted over: " + (numOnBuild37 + (numOnBuild36 - numLiftoverFailed)));
                 writer.newLine();
+                writer.newLine();
 
+                writer.write("Number of Assays Passing: " + (numAssays - numAssaysFlagged));
+                writer.newLine();
+                writer.write("Number of Duplicated Assays: " + numAssaysDuplicated);
+                writer.newLine();
                 writer.write("Number of Assays flagged: " + numAssaysFlagged);
+                writer.newLine();
                 writer.newLine();
                 writer.write("Number of SNPs: " + numSnps);
                 writer.newLine();
                 writer.write("Number of Passing SNPs: " + (numSnps - numSnpsFlagged));
+                writer.newLine();
+                writer.write("Number of Duplicated SNPs: " + numSnpsDuplicated);
                 writer.newLine();
                 writer.write("Number of SNPs flagged: " + numSnpsFlagged);
                 writer.newLine();
@@ -432,8 +460,11 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.write("Number of ambiguous SNPs on Negative Strand: " + numAmbiguousSnpsOnNegStrand);
                 writer.newLine();
+                writer.newLine();
 
                 writer.write("Number of Passing Indels: " + (numIndels - numIndelsFlagged));
+                writer.newLine();
+                writer.write("Number of Duplicated Indels: " + numIndelsDuplicated);
                 writer.newLine();
                 writer.write("Number of Indels flagged: " + numIndelsFlagged);
                 writer.newLine();
