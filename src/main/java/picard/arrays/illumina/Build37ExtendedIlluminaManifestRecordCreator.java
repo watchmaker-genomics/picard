@@ -6,7 +6,6 @@ import htsjdk.samtools.util.Interval;
 import htsjdk.samtools.util.Log;
 import htsjdk.samtools.util.SequenceUtil;
 import htsjdk.tribble.annotation.Strand;
-import htsjdk.variant.variantcontext.Allele;
 import picard.PicardException;
 
 import java.io.File;
@@ -65,11 +64,7 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
                 "",
                 "",
                 "",
-                "",
-                // TODO - why set/store these here?
-                Allele.NO_CALL,
-                Allele.NO_CALL,
-                Allele.NO_CALL);
+                "");
 
         // Look for entries which Illumina has marked as invalid
         if (locusEntry.chrom.equals(IlluminaManifestRecord.ILLUMINA_FLAGGED_BAD_CHR)) {
@@ -108,16 +103,6 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
             }
         }
 
-        if (!newRecord.isBad()) {     // Note that populateSnp/IndelAlleles may flag a record as bad
-            newRecord.A = Allele.create(newRecord.snpAlleleA, newRecord.snpAlleleA.equals(newRecord.snpRefAllele));
-            newRecord.B = Allele.create(newRecord.snpAlleleB, newRecord.snpAlleleB.equals(newRecord.snpRefAllele));
-            newRecord.ref = Allele.create(newRecord.snpRefAllele, true);
-        } else {
-            newRecord.A = Allele.NO_CALL;
-            newRecord.B = Allele.NO_CALL;
-            newRecord.ref = Allele.NO_CALL;
-        }
-
         return newRecord;
     }
 
@@ -151,7 +136,7 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
                 // This manifest contains no Allele B Probe Sequence.  We (currently) need this for validating/trusting
                 // these ambiguous SNPs, so we are flagging it.
 
-                // This should be an error?
+                // This should be an error?  Yes!!  TODO
                 log.warn("Ambiguous probe without alleleBProbeSeq!!!  Record: " + this);
             }
         }

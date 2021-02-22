@@ -94,10 +94,9 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     String rsId;
     Flag flag = Flag.PASS;
 
-    // TODO - I don't think these should be in here.
-    Allele A;
-    Allele B;
-    Allele ref;
+    Allele aAllele = null;
+    Allele bAllele = null;
+    Allele refAllele = null;
 
     // The refStrand if provided in the Illumina manifest, otherwise calculated
     // TODO - probably rename this back to refStrand once this class no longer extends IlluminaManifestRecord
@@ -124,10 +123,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
             snpAlleleA = line[end - 4];
             snpAlleleB = line[end - 3];
             rsId = line[end - 2];
-
-            A = Allele.create(snpAlleleA, snpAlleleA.equals(snpRefAllele));
-            B = Allele.create(snpAlleleB, snpAlleleB.equals(snpRefAllele));
-            ref = Allele.create(snpRefAllele, true);
         } else {
             b37Chr = "0";
             b37Pos = 0;
@@ -135,10 +130,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
             snpAlleleA = "";
             snpAlleleB = "";
             rsId = "";
-
-            A = Allele.NO_CALL;
-            B = Allele.NO_CALL;
-            ref = Allele.NO_CALL;
         }
     }
 
@@ -149,10 +140,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
                                    final String snpRefAllele,
                                    final String snpAlleleA,
                                    final String snpAlleleB,
-                                   final String rsId,
-                                   final Allele A,
-                                   final Allele B,
-                                   final Allele ref) {
+                                   final String rsId) {
         super(record);
         this.locusEntry = null;
         this.illuminaManifestRecord = null;
@@ -163,9 +151,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         this.snpAlleleA = snpAlleleA;
         this.snpAlleleB = snpAlleleB;
         this.rsId = rsId;
-        this.A = A;
-        this.B = B;
-        this.ref = ref;
     }
 
     /**
@@ -227,15 +212,33 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     }
 
     public Allele getAlleleA() {
-        return A;
+        if (aAllele == null) {
+            aAllele = Allele.NO_CALL;
+            if (!isBad() && !StringUtils.isEmpty(snpAlleleA)) {
+                aAllele = Allele.create(snpAlleleA, snpAlleleA.equals(snpRefAllele));
+            }
+        }
+        return aAllele;
     }
 
     public Allele getAlleleB() {
-        return B;
+        if (bAllele == null) {
+            bAllele = Allele.NO_CALL;
+            if (!isBad() && !StringUtils.isEmpty(snpAlleleB)) {
+                bAllele = Allele.create(snpAlleleB, snpAlleleB.equals(snpRefAllele));
+            }
+        }
+        return bAllele;
     }
 
     public Allele getRefAllele() {
-        return ref;
+        if (refAllele == null) {
+            refAllele = Allele.NO_CALL;
+            if (!isBad() && !StringUtils.isEmpty(snpRefAllele)) {
+                refAllele = Allele.create(snpRefAllele, true);
+            }
+        }
+        return refAllele;
     }
 
     public Strand getReferenceStrand() { return referenceStrand; }

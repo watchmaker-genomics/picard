@@ -221,9 +221,9 @@ task barclayTest(type: Test) {
 }
 
 // Run tests using both the legacy and barclay command line parsers.
-test {
-    dependsOn barclayTest
-}
+//test {
+//    dependsOn barclayTest
+//}
 
 tasks.withType(Test) {
     outputs.upToDateWhen { false } // tests will always rerun

@@ -241,7 +241,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         Map<String, List<Build37ExtendedIlluminaManifestRecord>> coordinateMap = new HashMap<>();
         for (Build37ExtendedIlluminaManifestRecord record : records) {
             // A DUP is only a DUP if it's at the same location AND has the same alleles...
-            // TODO - you're not doing a '.toString' at the end!!!
             // TODO - And you should exclude Fails from this list...
             String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
             if (coordinateMap.containsKey(key)) {
