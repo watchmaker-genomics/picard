@@ -248,6 +248,18 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         return b37Pos;
     }
 
+    public String getSnpRefAllele() {
+        return snpRefAllele;
+    }
+
+    public String getSnpAlleleA() {
+        return snpAlleleA;
+    }
+
+    public String getSnpAlleleB() {
+        return snpAlleleB;
+    }
+
     public String getRsId() { return rsId; }
 
     public Boolean isBad() {

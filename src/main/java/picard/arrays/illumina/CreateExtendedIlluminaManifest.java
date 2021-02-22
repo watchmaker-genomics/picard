@@ -62,10 +62,18 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
     @Argument(shortName = "RF", doc = "The name of the the report file")
     public File REPORT_FILE;
 
+    @Argument(shortName = "FD", doc = "Flag duplicates in the extended manifest.  " +
+            "If this is set and there are multiple passing assays at the same site (same locus and alleles) " +
+            "then all but one will be marked with the 'DUP' flag in the extended manifest. " +
+            "The one that is not marked as 'DUP' will be the one with the highest Gentrain score as read from the cluster file.", optional = true)
+    public Boolean FLAG_DUPLICATES = true;
+
     @Argument(shortName = "CF", doc = "The Standard (Hapmap-trained) cluster file (.egt) from Illumina. " +
             "If there are duplicate assays at a site, this is used to decide which is the 'best' (non-filtered in generated VCFs) " +
-            "by choosing the assay with the best GenTrain scores)")
+            "by choosing the assay with the best GenTrain scores)", optional = true)
     public File CLUSTER_FILE;
+
+    // TODO - need opposite of MUTEX.  If FLAG_DUPLICATES defined, must have CLUSTER_FILE defined (and exist).
 
     @Argument(shortName = "DBSNP", doc = "Reference dbSNP file in VCF format.", optional = true)
     public File DBSNP_FILE;
@@ -118,8 +126,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             IOUtil.assertFileIsWritable(BAD_ASSAYS_FILE);
             IOUtil.assertFileIsWritable(REPORT_FILE);
 
-            Map<String, List<IlluminaManifestRecord>> coordinateMap = new HashMap<>();
-
             IntervalList manifestSnpIntervals = new IntervalList(sequenceDictionary);
             IntervalList manifestIndelIntervals = new IntervalList(sequenceDictionary);
 
@@ -154,22 +160,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
                 // Create an ExtendedIlluminaManifestRecord here so that we can get the (potentially lifted over) coordinates
                 final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
-//                final Build37ExtendedIlluminaManifestRecord rec = new Build37ExtendedIlluminaManifestRecord(locusEntry, record,
-//                        referenceSequenceMap, chainFilesMap);
                 records.add(rec);
                 manifestStatistics.updateStatistics(rec);
-
-                // A DUP is only a DUP if it's at the same location AND has the same alleles...
-                // TODO - you're not doing a '.toString' at the end!!!
-                // TODO - And you should exclude Fails from this list...
-                String key = rec.getB37Chr() + ":" + rec.getB37Pos() + "." + rec.getAlleleA().toString() + "." + rec.getAlleleB();
-                if (coordinateMap.containsKey(key)) {
-                    coordinateMap.get(key).add(record);
-                } else {
-                    List<IlluminaManifestRecord> newList = new ArrayList<>();
-                    newList.add(record);
-                    coordinateMap.put(key, newList);
-                }
 
                 if (!rec.isBad()) {
                     final int length = Integer.max(rec.getAlleleA().length(), rec.getAlleleB().length());
@@ -199,44 +191,15 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 indelLocusToRsId = generateLocusToRsidMap(DBSNP_FILE, manifestIndelIntervals);
             }
 
-            // filter out all unique coordinates
-            Map<String, List<IlluminaManifestRecord>> dupeMap = coordinateMap.entrySet().stream()
-                    .filter(map -> map.getValue().size() > 1)
-                    .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            coordinateMap.clear();
-
-            // Load the cluster file to get the GenTrain scores
-            // load the egt first, and create a map of ilmnid to gentrain score.  Save that and use it for deduplicating.
-            log.info("Loading the egt file");
-            final InfiniumEGTFile infiniumEGTFile;
-            try {
-                infiniumEGTFile = new InfiniumEGTFile(CLUSTER_FILE);
-            } catch (IOException e) {
-                throw new PicardException("Error reading cluster file '" + CLUSTER_FILE.getAbsolutePath() + "'", e);
+            List<Integer> dupeIndices = null;
+            if (FLAG_DUPLICATES) {
+                dupeIndices = flagDuplicates(records);
             }
-
-            // TODO - next steps - make dup flagging it's own method, make it a CLP option (default is on) and don't require the EGT if you aren't doing it.
-
-            // evaluate each coordinate assay and remove the assay with the best GenTrain score (all remaining are dupes)
-            dupeMap.entrySet().forEach(entry ->
-                    entry.getValue().remove(entry.getValue().stream().max(Comparator.comparingDouble(assay ->
-                            infiniumEGTFile.totalScore[infiniumEGTFile.rsNameToIndex.get(assay.getName())])).get()));
-
-            // we really only need the list of indices for the dupes
-            List<Integer> dupeIndices = dupeMap.entrySet().stream()
-                    .flatMapToInt(entry ->
-                            entry.getValue().stream()
-                                    .mapToInt(IlluminaManifestRecord::getIndex))
-                    .boxed().collect(Collectors.toList());
-            dupeMap.clear();
-
-//            final IlluminaManifest secondPassManifestFile = new IlluminaManifest(INPUT);
-//            final Iterator<IlluminaManifestRecord> secondPassIterator = secondPassManifestFile.iterator();
 
             final BufferedWriter out = new BufferedWriter(new FileWriter(OUTPUT, false));
             writeExtendedIlluminaManifestHeaders(manifestFile, out);
 
-            //second iteration to write all records after dupe evaluation
+            // second iteration to write all records after dupe evaluation
             log.info("Phase 3.  Generate the Extended Illumina Manifest");
             logger = new ProgressLogger(log, 10000);
 
@@ -254,34 +217,13 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 if (record.isBad()) {
                     badRecords.add(record);
                 } else {
-                    record.setDupe(dupeIndices.contains(record.getIndex()));
+                    if (dupeIndices != null) {
+                        record.setDupe(dupeIndices.contains(record.getIndex()));
+                    }
                 }
                 out.write(record.getLine());
                 out.newLine();
             }
-
-//            locusIndex = 0;
-//            while (secondPassIterator.hasNext()) {
-//                logger.record("0", 0);
-//                IlluminaBPMLocusEntry locusEntry = illuminaBPMLocusEntries[locusIndex++];
-//                final IlluminaManifestRecord record = secondPassIterator.next();
-//                final String locus = record.getChr() + "." + record.getPosition();
-//                String rsId;
-//                if (record.isSnp()) {
-//                    rsId = snpLocusToRsId.get(locus);
-//                } else {
-//                    rsId = indelLocusToRsId.get(locus);
-//                }
-//                final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
-//                rec.setRsId(rsId);
-//                if (rec.isBad()) {
-//                    badRecords.add(rec);
-//                } else {
-//                    rec.setDupe(dupeIndices.contains(record.getIndex()));
-//                }
-//                out.write(rec.getLine());
-//                out.newLine();
-//            }
 
             out.flush();
             out.close();
@@ -293,6 +235,55 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         }
 
         return 0;
+    }
+
+    private List<Integer> flagDuplicates(List<Build37ExtendedIlluminaManifestRecord> records) {
+        Map<String, List<Build37ExtendedIlluminaManifestRecord>> coordinateMap = new HashMap<>();
+        for (Build37ExtendedIlluminaManifestRecord record : records) {
+            // A DUP is only a DUP if it's at the same location AND has the same alleles...
+            // TODO - you're not doing a '.toString' at the end!!!
+            // TODO - And you should exclude Fails from this list...
+            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
+            if (coordinateMap.containsKey(key)) {
+                coordinateMap.get(key).add(record);
+            } else {
+                List<Build37ExtendedIlluminaManifestRecord> newList = new ArrayList<>();
+                newList.add(record);
+                coordinateMap.put(key, newList);
+            }
+        }
+
+        // filter out all unique coordinates
+        Map<String, List<Build37ExtendedIlluminaManifestRecord>> dupeMap = coordinateMap.entrySet().stream()
+                .filter(map -> map.getValue().size() > 1)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        coordinateMap.clear();
+
+        // Load the cluster file to get the GenTrain scores
+        // load the egt first, and create a map of ilmnid to gentrain score.  Save that and use it for deduplicating.
+        log.info("Loading the egt file");
+        final InfiniumEGTFile infiniumEGTFile;
+        try {
+            infiniumEGTFile = new InfiniumEGTFile(CLUSTER_FILE);
+        } catch (IOException e) {
+            throw new PicardException("Error reading cluster file '" + CLUSTER_FILE.getAbsolutePath() + "'", e);
+        }
+
+        // TODO - next steps - make dup flagging it's own method, make it a CLP option (default is on) and don't require the EGT if you aren't doing it.
+
+        // evaluate each coordinate assay and remove the assay with the best GenTrain score (all remaining are dupes)
+        dupeMap.entrySet().forEach(entry ->
+                entry.getValue().remove(entry.getValue().stream().max(Comparator.comparingDouble(assay ->
+                        infiniumEGTFile.totalScore[infiniumEGTFile.rsNameToIndex.get(assay.getName())])).get()));
+
+        // we really only need the list of indices for the dupes
+        List<Integer> dupeIndices = dupeMap.entrySet().stream()
+                .flatMapToInt(entry ->
+                        entry.getValue().stream()
+                                .mapToInt(IlluminaManifestRecord::getIndex))
+                .boxed().collect(Collectors.toList());
+
+        return dupeIndices;
     }
 
     private void writeBadAssaysFile(File badAssaysFile, List<Build37ExtendedIlluminaManifestRecord> badRecords) throws IOException {
