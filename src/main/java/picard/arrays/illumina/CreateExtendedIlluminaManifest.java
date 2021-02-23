@@ -318,6 +318,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         int numSnps;
         int numSnpsDuplicated;          // The number of passing SNP assays which are flagged as duplicates
         int numSnpsFlagged;
+        int numSnpsIlluminaFlagged;
         int numSnpProbeSequenceMismatch;
         int numAmbiguousSnpsOnPosStrand;
         int numAmbiguousSnpsOnNegStrand;
@@ -325,6 +326,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         int numIndels;
         int numIndelsDuplicated;        // The number of passing SNP assays which are flagged as duplicates
         int numIndelsFlagged;
+        int numIndelsIlluminaFlagged;
         int numIndelProbeSequenceMismatch;
         int numIndelProbeSequenceStrandInvalid;
         int numIndelSourceSequenceMismatch;
@@ -380,11 +382,22 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 numAssaysFlagged++;
                 if (rec.isSnp()) {
                     numSnpsFlagged++;
+                    switch (rec.getFlag()) {
+                        case ILLUMINA_FLAGGED:
+                            numSnpsIlluminaFlagged++;
+                            break;
+                        case PROBE_SEQUENCE_MISMATCH:
+                            numSnpProbeSequenceMismatch++;
+                            break;
+                        default:
+                            throw new PicardException("Unhandled Flag: " + rec.getFlag());
+                    }
                 } else {
                     numIndelsFlagged++;
-                }
-                if (rec.isIndel()) {
                     switch (rec.getFlag()) {
+                        case ILLUMINA_FLAGGED:
+                            numIndelsIlluminaFlagged++;
+                            break;
                         case PROBE_SEQUENCE_MISMATCH:
                             numIndelProbeSequenceMismatch++;
                             break;
@@ -406,11 +419,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                         case INDEL_CONFLICT:
                             numIndelConfict++;
                             break;
-                    }
-                }
-                else {
-                    if (rec.getFlag() == Build37ExtendedIlluminaManifestRecord.Flag.PROBE_SEQUENCE_MISMATCH) {
-                        numSnpProbeSequenceMismatch++;
+                        default:
+                            throw new PicardException("Unhandled Flag: " + rec.getFlag());
                     }
                 }
             }
@@ -438,7 +448,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.write("Number of Duplicated Assays: " + numAssaysDuplicated);
                 writer.newLine();
-                writer.write("Number of Assays flagged: " + numAssaysFlagged);
+                writer.write("Number of Failing Assays: " + numAssaysFlagged);
                 writer.newLine();
                 writer.newLine();
                 writer.write("Number of SNPs: " + numSnps);
@@ -447,14 +457,15 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.write("Number of Duplicated SNPs: " + numSnpsDuplicated);
                 writer.newLine();
-                writer.write("Number of SNPs flagged: " + numSnpsFlagged);
                 writer.newLine();
-                // Need categories for # of SNPs / Indels on other builds and # on build 36 that fail liftover.
-
+                writer.write("Number of Failing SNPs: " + numSnpsFlagged);
+                writer.newLine();
+                writer.write("Number of SNPs failed by Illumina: " + numSnpsIlluminaFlagged);
+                writer.newLine();
                 // Note - currently this is only calculated for SNPs - that's why it's not in the indel section too.
-                writer.write("Number of SNPs flagged for refStrand mismatch: "  + numRefStrandMismatch);
+                writer.write("Number of SNPs failed for refStrand mismatch: "  + numRefStrandMismatch);
                 writer.newLine();
-                writer.write("Number of SNPs flagged for sequence mismatch: " + numSnpProbeSequenceMismatch);
+                writer.write("Number of SNPs failed for sequence mismatch: " + numSnpProbeSequenceMismatch);
                 writer.newLine();
                 writer.write("Number of ambiguous SNPs on Positive Strand: " + numAmbiguousSnpsOnPosStrand);
                 writer.newLine();
@@ -468,21 +479,24 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.write("Number of Duplicated Indels: " + numIndelsDuplicated);
                 writer.newLine();
-                writer.write("Number of Indels flagged: " + numIndelsFlagged);
                 writer.newLine();
-                writer.write("Number of Indels flagged for probe sequence mismatch: " + numIndelProbeSequenceMismatch);
+                writer.write("Number of Failing Indels: " + numIndelsFlagged);
                 writer.newLine();
-                writer.write("Number of Indels flagged for probe sequence strand invalid: " + numIndelProbeSequenceStrandInvalid);
+                writer.write("Number of Indels failed by Illumina: " + numIndelsIlluminaFlagged);
                 writer.newLine();
-                writer.write("Number of Indels flagged for source sequence mismatch: " + numIndelSourceSequenceMismatch);
+                writer.write("Number of Indels failed for probe sequence mismatch: " + numIndelProbeSequenceMismatch);
                 writer.newLine();
-                writer.write("Number of Indels flagged for source sequence invalid: " + numIndelSourceSequenceInvalid);
+                writer.write("Number of Indels failed for probe sequence strand invalid: " + numIndelProbeSequenceStrandInvalid);
                 writer.newLine();
-                writer.write("Number of Indels flagged for source sequence strand invalid: " + numIndelSourceSequenceStrandInvalid);
+                writer.write("Number of Indels failed for source sequence mismatch: " + numIndelSourceSequenceMismatch);
+                writer.newLine();
+                writer.write("Number of Indels failed for source sequence invalid: " + numIndelSourceSequenceInvalid);
+                writer.newLine();
+                writer.write("Number of Indels failed for source sequence strand invalid: " + numIndelSourceSequenceStrandInvalid);
                 writer.newLine();
                 writer.write("Number of Indels not found: " + numIndelsNotFound);
                 writer.newLine();
-                writer.write("Number of Indels flagged for conflict: " + numIndelConfict);
+                writer.write("Number of Indels failed for conflict: " + numIndelConfict);
                 writer.newLine();
             }
         }

@@ -419,7 +419,6 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
                 probeSeq = illuminaManifestRecord.getAlleleAProbeSeq();
             }
 
-            // Should use lifted over b37 coordinates!!!
             final String reference = getSequenceAt(refFile, build37ExtendedIlluminaManifestRecord.b37Chr, build37ExtendedIlluminaManifestRecord.b37Pos - probeSeq.length(), build37ExtendedIlluminaManifestRecord.b37Pos - 1);
             final String reverseReference = SequenceUtil.reverseComplement(getSequenceAt(refFile, build37ExtendedIlluminaManifestRecord.b37Chr, build37ExtendedIlluminaManifestRecord.b37Pos + 1, build37ExtendedIlluminaManifestRecord.b37Pos + probeSeq.length()));
 
