@@ -234,6 +234,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         return 0;
     }
 
+    // TODO - need to test this method.  Will need to use some sort of MockInfiniumEgtDataFile.
     private List<Integer> flagDuplicates(List<Build37ExtendedIlluminaManifestRecord> records) {
         Map<String, List<Build37ExtendedIlluminaManifestRecord>> coordinateMap = new HashMap<>();
         for (Build37ExtendedIlluminaManifestRecord record : records) {
@@ -461,7 +462,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.newLine();
 
-                writer.write("Number of Indels: " + (numIndels - numIndelsFlagged));
+                writer.write("Number of Indels: " + numIndels);
                 writer.newLine();
                 writer.write("Number of Passing Indels: " + (numIndels - numIndelsFlagged));
                 writer.newLine();
