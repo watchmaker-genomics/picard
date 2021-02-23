@@ -99,7 +99,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
     // TODO - Make the liftover completely optional
 
-
     @Override
     protected int doWork() {
 
@@ -138,7 +137,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
             IlluminaBPMLocusEntry[] illuminaBPMLocusEntries = illuminaBPMFile.getLocusEntries();
 
-//            ExtendedIlluminaManifestRecordCreator creator = new ExtendedIlluminaManifestRecordCreator(referenceSequenceMap, chainFilesMap);
             Build37ExtendedIlluminaManifestRecordCreator creator = new Build37ExtendedIlluminaManifestRecordCreator(referenceSequenceMap, chainFilesMap);
 
             // first iteration through the manifest to find all dupes
@@ -160,7 +158,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
                 records.add(rec);
 
-                if (!rec.isBad()) {
+                if (!rec.isFail()) {
                     final int length = Integer.max(rec.getAlleleA().length(), rec.getAlleleB().length());
                     Interval interval = new Interval(rec.getB37Chr(), rec.getB37Pos(), rec.getB37Pos() + length);
                     if (rec.isSnp()) {
@@ -212,7 +210,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                     rsId = indelLocusToRsId.get(locus);
                 }
                 record.setRsId(rsId);
-                if (record.isBad()) {
+                if (record.isFail()) {
                     badRecords.add(record);
                 } else {
                     if (dupeIndices != null) {
@@ -239,24 +237,27 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
     private List<Integer> flagDuplicates(List<Build37ExtendedIlluminaManifestRecord> records) {
         Map<String, List<Build37ExtendedIlluminaManifestRecord>> coordinateMap = new HashMap<>();
         for (Build37ExtendedIlluminaManifestRecord record : records) {
-            // A DUP is only a DUP if it's at the same location AND has the same alleles...
-            // TODO - And you should exclude Fails from this list...
-            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
-            // TODO - NOTE - This fixes bug # 1 (Duplicate flagging)  We generated the key for duplicating as coordinates, then an ordered list of allele A and B
+
+            // TODO - bug#1 - NOTE - This fixes bug # 1 (Duplicate flagging)  We generated the key for duplicating as coordinates, then an ordered list of allele A and B
             //   We weren't handling the case that either A or B could be ref.
-            String key1 = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele();
-            if (!record.getSnpAlleleA().equals(record.getSnpRefAllele())) {
-                key1 += "." + record.getSnpAlleleA();
-            }
-            if (!record.getSnpAlleleB().equals(record.getSnpAlleleA()) && !(record.getSnpAlleleB().equals(record.getSnpRefAllele()))) {
-                key1 += "." + record.getSnpAlleleB();
-            }
-            if (coordinateMap.containsKey(key)) {
-                coordinateMap.get(key).add(record);
-            } else {
-                List<Build37ExtendedIlluminaManifestRecord> newList = new ArrayList<>();
-                newList.add(record);
-                coordinateMap.put(key, newList);
+            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
+//            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele();
+//            if (!record.getSnpAlleleA().equals(record.getSnpRefAllele())) {
+//                key += "." + record.getSnpAlleleA();
+//            }
+//            if (!record.getSnpAlleleB().equals(record.getSnpAlleleA()) && !(record.getSnpAlleleB().equals(record.getSnpRefAllele()))) {
+//                key += "." + record.getSnpAlleleB();
+//            }
+            // End of Fix for bug#1
+
+            if (!record.isFail()) {
+                if (coordinateMap.containsKey(key)) {
+                    coordinateMap.get(key).add(record);
+                } else {
+                    List<Build37ExtendedIlluminaManifestRecord> newList = new ArrayList<>();
+                    newList.add(record);
+                    coordinateMap.put(key, newList);
+                }
             }
         }
 
@@ -275,8 +276,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         } catch (IOException e) {
             throw new PicardException("Error reading cluster file '" + CLUSTER_FILE.getAbsolutePath() + "'", e);
         }
-
-        // TODO - next steps - make dup flagging it's own method, make it a CLP option (default is on) and don't require the EGT if you aren't doing it.
 
         // evaluate each coordinate assay and remove the assay with the best GenTrain score (all remaining are dupes)
         dupeMap.entrySet().forEach(entry ->
@@ -359,7 +358,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             if (rec.getFlag().equals(Build37ExtendedIlluminaManifestRecord.Flag.CALC_REF_STRAND_MISMATCH)) {
                 numRefStrandMismatch++;
             }
-            if (!rec.isBad()) {
+            if (!rec.isFail()) {
                 if (rec.isDupe()) {
                     numAssaysDuplicated++;
                     if (rec.isSnp()) {
@@ -430,11 +429,11 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.write("Number of Assays failing liftover: " + numLiftoverFailed);
                 writer.newLine();
-                writer.write("Number of Assays on Build 37 or successfully lifted over: " + (numOnBuild37 + (numOnBuild36 - numLiftoverFailed)));
-                writer.newLine();
                 writer.newLine();
 
-                writer.write("Number of Assays Passing: " + (numAssays - numAssaysFlagged));
+                writer.write("Number of Assays on Build 37 or successfully lifted over: " + (numOnBuild37 + (numOnBuild36 - numLiftoverFailed)));
+                writer.newLine();
+                writer.write("Number of Passing Assays: " + (numAssays - numAssaysFlagged));
                 writer.newLine();
                 writer.write("Number of Duplicated Assays: " + numAssaysDuplicated);
                 writer.newLine();
@@ -462,6 +461,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 writer.newLine();
                 writer.newLine();
 
+                writer.write("Number of Indels: " + (numIndels - numIndelsFlagged));
+                writer.newLine();
                 writer.write("Number of Passing Indels: " + (numIndels - numIndelsFlagged));
                 writer.newLine();
                 writer.write("Number of Duplicated Indels: " + numIndelsDuplicated);
@@ -489,7 +490,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
     @Override
     protected String[] customCommandLineValidation() {
         IOUtil.assertFileIsReadable(INPUT);
-        IOUtil.assertFileIsReadable(CLUSTER_FILE);
+        if (CLUSTER_FILE != null) {
+            IOUtil.assertFileIsReadable(CLUSTER_FILE);
+        }
         if (DBSNP_FILE != null) {
             IOUtil.assertFileIsReadable(DBSNP_FILE);
         }
@@ -499,6 +502,10 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         for (File f : SUPPORTED_CHAIN_FILE) IOUtil.assertFileIsReadable(f);
 
         final List<String> errors = new ArrayList<>();
+
+        if (FLAG_DUPLICATES && CLUSTER_FILE == null) {
+            errors.add("In order to flag duplicates, a CLUSTER_FILE must be supplied");
+        }
 
         if (SUPPORTED_BUILD.size() != SUPPORTED_REFERENCE_FILE.size()) {
             errors.add("The number of supported builds does not match the number of supported reference files");
@@ -557,7 +564,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_VERSION_HEADER_NAME, VERSION);
         addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_TARGET_BUILD_HEADER_NAME, TARGET_BUILD);
         addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_TARGET_REFERENCE_HEADER_NAME, TARGET_REFERENCE_FILE.getAbsolutePath());
-        addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_CLUSTER_FILE_HEADER_NAME, CLUSTER_FILE.getAbsolutePath());
+        if (CLUSTER_FILE != null) {
+            addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_CLUSTER_FILE_HEADER_NAME, CLUSTER_FILE.getAbsolutePath());
+        }
         if (DBSNP_FILE != null) {
             addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_DBSNP_FILE_HEADER_NAME, DBSNP_FILE.getAbsolutePath());
         }

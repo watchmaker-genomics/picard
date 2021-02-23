@@ -116,7 +116,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         final int end = line.length;
         flag = Flag.valueOf(line[end - 1]);
 
-        if (!isBad()) {
+        if (!isFail()) {
             b37Chr = line[end - 7];
             b37Pos = parseIntOrNull(line[end - 6]);
             snpRefAllele = line[end - 5];
@@ -214,7 +214,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     public Allele getAlleleA() {
         if (aAllele == null) {
             aAllele = Allele.NO_CALL;
-            if (!isBad() && !StringUtils.isEmpty(snpAlleleA)) {
+            if (!isFail() && !StringUtils.isEmpty(snpAlleleA)) {
                 aAllele = Allele.create(snpAlleleA, snpAlleleA.equals(snpRefAllele));
             }
         }
@@ -224,7 +224,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     public Allele getAlleleB() {
         if (bAllele == null) {
             bAllele = Allele.NO_CALL;
-            if (!isBad() && !StringUtils.isEmpty(snpAlleleB)) {
+            if (!isFail() && !StringUtils.isEmpty(snpAlleleB)) {
                 bAllele = Allele.create(snpAlleleB, snpAlleleB.equals(snpRefAllele));
             }
         }
@@ -234,7 +234,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
     public Allele getRefAllele() {
         if (refAllele == null) {
             refAllele = Allele.NO_CALL;
-            if (!isBad() && !StringUtils.isEmpty(snpRefAllele)) {
+            if (!isFail() && !StringUtils.isEmpty(snpRefAllele)) {
                 refAllele = Allele.create(snpRefAllele, true);
             }
         }
@@ -265,7 +265,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
 
     public String getRsId() { return rsId; }
 
-    public Boolean isBad() {
+    public Boolean isFail() {
         return flag != Flag.DUPE && flag != Flag.PASS;
     }
 
@@ -283,7 +283,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
 
     // TODO - you should have two different flags for error and dupe and only merge them later.
     public void setDupe(boolean isDupe) {
-        if (!isBad()) {
+        if (!isFail()) {
             if (isDupe) {
                 flag = Flag.DUPE;
             }

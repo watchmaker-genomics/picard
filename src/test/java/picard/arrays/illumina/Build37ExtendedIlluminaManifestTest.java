@@ -41,7 +41,7 @@ public class Build37ExtendedIlluminaManifestTest {
             Assert.assertNotNull(record.getName());
             Assert.assertNotNull(record.getIlmnId());
             Assert.assertNotNull(record.getSnp());
-            if (!record.isBad()) {
+            if (!record.isFail()) {
                 Assert.assertNotNull(record.getB37Chr());
                 Assert.assertNotNull(record.getB37Pos());
                 Assert.assertNotNull(record.getAlleleA());

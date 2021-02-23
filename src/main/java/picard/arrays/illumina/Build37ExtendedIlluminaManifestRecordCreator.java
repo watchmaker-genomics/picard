@@ -84,7 +84,7 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
             newRecord.b37Pos = locusEntry.mapInfo;
         } else {
             liftOverToBuild37(newRecord, locusEntry, illuminaManifestRecord);
-            if (newRecord.isBad()) {
+            if (newRecord.isFail()) {
                 return newRecord;
             }
         }
@@ -95,7 +95,7 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
             setReferenceStrand(newRecord, locusEntry, illuminaManifestRecord, refFile, stringent_validation);
         }
 
-        if (!newRecord.isBad()) {
+        if (!newRecord.isFail()) {
             if (newRecord.isSnp()) {
                 processSnp(newRecord, locusEntry, illuminaManifestRecord, refFile);
             } else {

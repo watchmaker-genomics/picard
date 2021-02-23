@@ -290,7 +290,7 @@ public class GtcToVcf extends CommandLineProgram {
         while (iterator.hasNext()) {
             final Build37ExtendedIlluminaManifestRecord record = iterator.next();
 
-            if (!record.isBad()) {
+            if (!record.isFail()) {
                 InfiniumGTCRecord gtcRecord = gtcFile.getRecord(gtcIndex);
                 VariantContext context = makeVariantContext(record, gtcRecord, egtFile, progressLogger);
                 numVariantsWritten++;
