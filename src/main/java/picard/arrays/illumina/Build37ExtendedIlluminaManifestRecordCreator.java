@@ -9,15 +9,24 @@ import htsjdk.tribble.annotation.Strand;
 import picard.PicardException;
 
 import java.io.File;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 
 public class Build37ExtendedIlluminaManifestRecordCreator {
 
+    private final String targetBuild;
     private final Map<String, ReferenceSequenceFile> referenceFilesMap;
     private final Map<String, File> chainFilesMap;
+    private final Set<String> supportedBuilds;
+
+    // Builds found in records that we don't support (and so are failed)
+    private final Set<String> unsupportedBuilds;
+
     // TODO - need to handle this for indels too!
     private boolean refStrandDefinedInManifest = true;
 
@@ -42,10 +51,16 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
     public static final int INDEL_SEQUENCE = 3;
     public static final int THREE_PRIME_SEQUENCE = 4;
 
-    Build37ExtendedIlluminaManifestRecordCreator(final Map<String, ReferenceSequenceFile> referenceFilesMap,
-                                          final Map<String, File> chainFilesMap) {
+    Build37ExtendedIlluminaManifestRecordCreator(final String targetBuild,
+                                                 final Map<String, ReferenceSequenceFile> referenceFilesMap,
+                                                 final Map<String, File> chainFilesMap) {
+        this.targetBuild = targetBuild;
         this.referenceFilesMap = referenceFilesMap;
         this.chainFilesMap = chainFilesMap;
+        this.supportedBuilds = new HashSet<>();
+        this.unsupportedBuilds = new TreeSet<>();
+        supportedBuilds.add(targetBuild);
+        supportedBuilds.addAll(chainFilesMap.keySet());
     }
 
     public Build37ExtendedIlluminaManifestRecord createRecord(final IlluminaBPMLocusEntry locusEntry,
@@ -77,25 +92,24 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
 //        }
         // End TODO - TEMP!
 
-        if (!illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_36) &&
-                !illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_37)) {
+        if (!this.supportedBuilds.contains(illuminaManifestRecord.getMajorGenomeBuild())) {
+            this.unsupportedBuilds.add(illuminaManifestRecord.getMajorGenomeBuild());
             newRecord.flag = Build37ExtendedIlluminaManifestRecord.Flag.UNSUPPORTED_GENOME_BUILD;
             return newRecord;
         }
 
-        // TODO - figure out how to do this with and without liftover files
-        if (illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_37)) {
+        if (illuminaManifestRecord.getMajorGenomeBuild().equals(targetBuild)) {
             // no liftover needed
             newRecord.b37Chr = locusEntry.chrom;
             newRecord.b37Pos = locusEntry.mapInfo;
         } else {
-            liftOverToBuild37(newRecord, locusEntry, illuminaManifestRecord);
+            liftOverToTargetBuild(newRecord, locusEntry, illuminaManifestRecord);
             if (newRecord.isFail()) {
                 return newRecord;
             }
         }
 
-        final ReferenceSequenceFile refFile = referenceFilesMap.get(BUILD_37);
+        final ReferenceSequenceFile refFile = referenceFilesMap.get(targetBuild);
 
         if (newRecord.isSnp()) {      // TODO - will need to do this for indels too.
             setReferenceStrandForSnp(newRecord, locusEntry, illuminaManifestRecord, refFile);
@@ -513,30 +527,31 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
     }
 
     /**
-     * Determines the chromosome and position of the record on Build 37.
+     * Determines the chromosome and position of the record on the target build
      */
-    private void liftOverToBuild37(final Build37ExtendedIlluminaManifestRecord build37ExtendedIlluminaManifestRecord,
+    private void liftOverToTargetBuild(final Build37ExtendedIlluminaManifestRecord build37ExtendedIlluminaManifestRecord,
                                    final IlluminaBPMLocusEntry locusEntry,
                                    final IlluminaManifestRecord illuminaManifestRecord) {
 
-        final File chainFileToBuild37 = chainFilesMap.get(illuminaManifestRecord.getMajorGenomeBuild());
-        final LiftOver liftOver = new LiftOver(chainFileToBuild37);
+        final String supportedBuildNumber = illuminaManifestRecord.getMajorGenomeBuild();
+        final File chainFileToTargetBuild = chainFilesMap.get(supportedBuildNumber);
+        final LiftOver liftOver = new LiftOver(chainFileToTargetBuild);
         final Interval interval = new Interval(locusEntry.getChrom(), locusEntry.getMapInfo(), locusEntry.mapInfo);
-        final Interval b37Interval = liftOver.liftOver(interval);
+        final Interval targetBuildInterval = liftOver.liftOver(interval);
 
-        if (b37Interval != null) {
-            build37ExtendedIlluminaManifestRecord.b37Chr = b37Interval.getContig();
-            build37ExtendedIlluminaManifestRecord.b37Pos = b37Interval.getStart();
+        if (targetBuildInterval != null) {
+            build37ExtendedIlluminaManifestRecord.b37Chr = targetBuildInterval.getContig();
+            build37ExtendedIlluminaManifestRecord.b37Pos = targetBuildInterval.getStart();
 
             // Validate that the reference allele at the lifted over coordinates matches that of the original.
-            String originalRefAllele = getSequenceAt(referenceFilesMap.get(BUILD_36), locusEntry.getChrom(), locusEntry.getMapInfo(), locusEntry.mapInfo);
-            String newRefAllele = getSequenceAt(referenceFilesMap.get(BUILD_37), build37ExtendedIlluminaManifestRecord.b37Chr, build37ExtendedIlluminaManifestRecord.b37Pos, build37ExtendedIlluminaManifestRecord.b37Pos);
+            String originalRefAllele = getSequenceAt(referenceFilesMap.get(supportedBuildNumber), locusEntry.getChrom(), locusEntry.getMapInfo(), locusEntry.mapInfo);
+            String newRefAllele = getSequenceAt(referenceFilesMap.get(targetBuild), build37ExtendedIlluminaManifestRecord.b37Chr, build37ExtendedIlluminaManifestRecord.b37Pos, build37ExtendedIlluminaManifestRecord.b37Pos);
             if (originalRefAllele.equals(newRefAllele)) {
                 log.debug("Lifted over record " + build37ExtendedIlluminaManifestRecord);
-                log.debug(" From build " + illuminaManifestRecord.getMajorGenomeBuild() +
+                log.debug(" From build " + supportedBuildNumber +
                         " chr=" + locusEntry.getChrom() +
                         ", position=" + locusEntry.getMapInfo()  +
-                        " To build " + BUILD_37 +
+                        " To build " + targetBuild +
                         " chr=" + build37ExtendedIlluminaManifestRecord.b37Chr + ", position=" + build37ExtendedIlluminaManifestRecord.b37Pos);
             } else {
                 build37ExtendedIlluminaManifestRecord.flag = Build37ExtendedIlluminaManifestRecord.Flag.LIFTOVER_FAILED;
@@ -547,6 +562,10 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
             build37ExtendedIlluminaManifestRecord.flag = Build37ExtendedIlluminaManifestRecord.Flag.LIFTOVER_FAILED;
             log.error("Liftover failed for record: " + build37ExtendedIlluminaManifestRecord);
         }
+    }
+
+    public Set<String> getUnsupportedBuilds() {
+        return unsupportedBuilds;
     }
 
     public boolean isRefStrandDefinedInManifest() {

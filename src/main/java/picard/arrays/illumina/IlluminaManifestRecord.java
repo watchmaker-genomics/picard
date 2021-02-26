@@ -347,7 +347,7 @@ public class IlluminaManifestRecord {
             majorGenomeBuild = genomeBuild;
         }
 
-        return majorGenomeBuild;
+        return majorGenomeBuild.trim();
     }
 
     String getHgGenomeBuild(String majorGenomeBuild) {

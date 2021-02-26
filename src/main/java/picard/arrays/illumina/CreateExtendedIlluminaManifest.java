@@ -1,5 +1,6 @@
 package picard.arrays.illumina;
 
+import htsjdk.samtools.Defaults;
 import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.reference.ReferenceSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory;
@@ -19,6 +20,7 @@ import org.broadinstitute.barclay.argparser.CommandLineProgramProperties;
 import picard.PicardException;
 import picard.cmdline.CommandLineProgram;
 import picard.cmdline.StandardOptionDefinitions;
+import picard.cmdline.argumentcollections.ReferenceArgumentCollection;
 import picard.vcf.ByIntervalListVariantContextIterator;
 
 import java.io.BufferedWriter;
@@ -28,23 +30,37 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  * Create an Extended Illumina Manifest by performing a liftover to Build 37.
  */
 @CommandLineProgramProperties(
-        summary = "Create an Extended Illumina Manifest",
-        oneLineSummary = "Create an Extended Illumina Manifest by performing a liftover to Build 37",
+        summary = CreateExtendedIlluminaManifest.USAGE_DETAILS,
+        oneLineSummary = "Create an Extended Illumina Manifest for usage by the Picard tool GtcToVcf",
         programGroup = picard.cmdline.programgroups.GenotypingArraysProgramGroup.class
 )
 public class CreateExtendedIlluminaManifest extends CommandLineProgram {
+
+    static final String USAGE_DETAILS =
+            "CreateExtendedIlluminaManifest takes an Illumina manifest file (this is the text version of an Illumina '.bpm' file) " +
+                    "And creates an 'extended' version of this text file by adding fields that facilitate VCF generation by downstream tools. " +
+                    "As part of generating this extended version of the manifest, the tool may mark loci as 'FAIL' if they do not pass validation. " +
+                    "<h4>Usage example:</h4>" +
+                    "<pre>" +
+                    "java -jar picard.jar GtcToVcf \\<br />" +
+                    "      --INPUT illumina_chip_manifest.csv \\<br />" +
+                    "      --BPM illumina_chip_manifest.bpm \\<br />" +
+                    "      --CF illumina_chip_manifest.egt \\<br />" +
+                    "      --TB 37 \\<br />" +
+                    "      --TR reference.fasta \\<br />" +
+                    "      --OUTPUT illumina_chip_manifest.extended.csv \\<br />" +
+                    "      --BAF illumina_chip_manifest.extended.bad_assays.csv \\<br />" +
+                    "      --RF illumina_chip_manifest.report.txt \\<br />" +
+                    "</pre>";
+
+    // TODO - add an example for doing liftover.
 
     @Argument(shortName = StandardOptionDefinitions.INPUT_SHORT_NAME, doc = "This is the text version of the Illumina .bpm file")
     public File INPUT;
@@ -73,24 +89,28 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             "by choosing the assay with the best GenTrain scores)", optional = true)
     public File CLUSTER_FILE;
 
-    // TODO - need opposite of MUTEX.  If FLAG_DUPLICATES defined, must have CLUSTER_FILE defined (and exist).
-
     @Argument(shortName = "DBSNP", doc = "Reference dbSNP file in VCF format.", optional = true)
     public File DBSNP_FILE;
 
-    @Argument(shortName = "TB", doc = "The target build.")
-    public String TARGET_BUILD;
+    @Argument(shortName = "TB", doc = "The target build.  This specifies the reference for which the extended manifest will be generated. " +
+            "Currently this tool only supports Build 37 (Genome Reference Consortium Human Build 37 (GRCh37)). " +
+            "If entries are found in the Illumina manifest that are on this build they will be used with the coordinate specified in the manifest, " +
+            "If there are entries found on other builds, they will be marked as failed in the extended manifest UNLESS the " +
+            "build and liftover information (SUPPORTED_BUILD, SUPPORTED_REFERENCE_FILE, and SUPPORTED_CHAIN_FILE) is supplied.")
+    public String TARGET_BUILD = "37";
 
-    @Argument(shortName = "TR", doc = "The target build's reference file.")
-    public File TARGET_REFERENCE_FILE;
-
-    @Argument(shortName = "SB", doc = "A supported build. The order of the input must match the order for SUPPORTED_REFERENCE_FILE and SUPPORTED_CHAIN_FILE.", optional = true)
+    @Argument(shortName = "SB", doc = "A supported build. The order of the input must match the order for SUPPORTED_REFERENCE_FILE and SUPPORTED_CHAIN_FILE. " +
+            "This is the name of the build as specified in the 'GenomeBuild' column of the Illumina manifest file.",
+            optional = true)
     public List<String> SUPPORTED_BUILD;
 
-    @Argument(shortName = "SR", doc = "A reference file for a supported build. Must provide a supported chain file to convert from supported -> target.", optional = true)
+    @Argument(shortName = "SR", doc = "A reference file for the provided SUPPORTED_BUILD. " +
+            "This is the reference file that corresponds to the 'SUPPORTED_BUILD' as specified above.",
+            optional = true)
     public List<File> SUPPORTED_REFERENCE_FILE;
 
-    @Argument(shortName = "SC", doc = "A chain file that maps from a supported build -> target build. Must provide a corresponding supported reference file.", optional = true)
+    @Argument(shortName = "SC", doc = "A chain file that maps from SUPPORTED_BUILD -> TARGET_BUILD. Must provide a corresponding supported reference file.",
+            optional = true)
     public List<File> SUPPORTED_CHAIN_FILE;
 
     private static final Log log = Log.getInstance(CreateExtendedIlluminaManifest.class);
@@ -103,17 +123,30 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
     // TODO - Make the liftover completely optional
 
     @Override
-    protected int doWork() {
+    protected ReferenceArgumentCollection makeReferenceArgumentCollection() {
+        return new ReferenceArgumentCollection() {
+            @Argument(shortName = StandardOptionDefinitions.REFERENCE_SHORT_NAME, common=false,
+                    doc = "The reference sequence (fasta) for the TARGET genome build.")
+            public File REFERENCE_SEQUENCE = Defaults.REFERENCE_FASTA;
 
+            @Override
+            public File getReferenceFile() {
+                return REFERENCE_SEQUENCE;
+            }
+        };
+    }
+
+    @Override
+    protected int doWork() {
         try {
             // Load the sequence dictionary from the Target Reference file
-            final SAMSequenceDictionary sequenceDictionary = SAMSequenceDictionaryExtractor.extractDictionary(TARGET_REFERENCE_FILE);
+            final SAMSequenceDictionary sequenceDictionary = SAMSequenceDictionaryExtractor.extractDictionary(REFERENCE_SEQUENCE);
 
             ProgressLogger logger = new ProgressLogger(log, 10000);
             final Map<String, ReferenceSequenceFile> referenceSequenceMap = new HashMap<>();
             final Map<String, File> chainFilesMap = new HashMap<>();
 
-            referenceSequenceMap.put(TARGET_BUILD, ReferenceSequenceFileFactory.getReferenceSequenceFile(TARGET_REFERENCE_FILE));
+            referenceSequenceMap.put(TARGET_BUILD, ReferenceSequenceFileFactory.getReferenceSequenceFile(REFERENCE_SEQUENCE));
 
             for (int i = 0; i < SUPPORTED_BUILD.size(); i++) {
                 referenceSequenceMap.put(SUPPORTED_BUILD.get(i), ReferenceSequenceFileFactory.getReferenceSequenceFile(SUPPORTED_REFERENCE_FILE.get(i)));
@@ -140,7 +173,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
             IlluminaBPMLocusEntry[] illuminaBPMLocusEntries = illuminaBPMFile.getLocusEntries();
 
-            Build37ExtendedIlluminaManifestRecordCreator creator = new Build37ExtendedIlluminaManifestRecordCreator(referenceSequenceMap, chainFilesMap);
+            Build37ExtendedIlluminaManifestRecordCreator creator = new Build37ExtendedIlluminaManifestRecordCreator(TARGET_BUILD, referenceSequenceMap, chainFilesMap);
 
             // first iteration through the manifest to find all dupes
             log.info("Phase 1.  First Pass through the manifest.  Build coordinate map for dupe flagging and make SNP and indel-specific interval lists for parsing dbSnp");
@@ -200,7 +233,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             // second iteration to write all records after dupe evaluation
             log.info("Phase 3.  Generate the Extended Illumina Manifest");
             logger = new ProgressLogger(log, 10000);
-            ManifestStatistics manifestStatistics = new ManifestStatistics();
+            ManifestStatistics manifestStatistics = new ManifestStatistics(TARGET_BUILD);
 
             List<Build37ExtendedIlluminaManifestRecord> badRecords = new ArrayList<>();
             for (Build37ExtendedIlluminaManifestRecord record: records) {
@@ -229,7 +262,31 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             out.close();
 
             writeBadAssaysFile(BAD_ASSAYS_FILE, badRecords);
-            manifestStatistics.logStatistics(REPORT_FILE, creator.isRefStrandDefinedInManifest());
+            StringBuilder sb = new StringBuilder();
+            sb.append("CreateExtendedIlluminaManifest (version: ").append(VERSION).append(") Report For: ").append(OUTPUT.getName()).append("\n");
+            sb.append("Generated on: ").append(new Date()).append("\n");
+            sb.append("Using Illumina Manifest: ").append(INPUT.getAbsolutePath()).append("\n");
+            sb.append("Using Illumina BPM: ").append(BEAD_POOL_MANIFEST_FILE.getAbsolutePath()).append("\n");
+            if (FLAG_DUPLICATES) {
+                sb.append("Duplicates were flagged\n");
+            }
+            if (CLUSTER_FILE != null) {
+                sb.append("Using Illumina EGT: ").append(CLUSTER_FILE.getAbsolutePath()).append("\n");
+            }
+            sb.append("\n");
+            if (!creator.isRefStrandDefinedInManifest() || (!creator.getUnsupportedBuilds().isEmpty())) {
+                sb.append("NOTES / Warnings:\n");
+                if (!creator.isRefStrandDefinedInManifest()) {
+                    sb.append("REF_STRAND was NOT defined in the manifest.  We have calculated it from the probe sequence.\n");
+                }
+                if (!creator.getUnsupportedBuilds().isEmpty()) {
+                    sb.append("Records were found within the manifest on Genome Builds for which you have not provided liftover information.\n");
+                    sb.append(" They have been failed with the flag: UNSUPPORTED_GENOME_BUILD\n");
+                    sb.append(" The following unexpected Genome Builds were found: ").append(StringUtils.join(creator.getUnsupportedBuilds(), ", ")).append("\n");
+                }
+                sb.append("\n");
+            }
+            manifestStatistics.logStatistics(REPORT_FILE, sb.toString());
         } catch (IOException e) {
             throw new PicardException(e.getMessage(), e);
         }
@@ -389,6 +446,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
     }
 
     private static class ManifestStatistics {
+        private String targetBuild;
+
         int numAssays;
         int numAssaysFlagged;
         int numAssaysDuplicated;        // The number of passing assays which are flagged as duplicates
@@ -415,11 +474,16 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         int numIndelsNotFound;
         int numIndelConfict;
 
-        int numOnBuild37;
-        int numOnBuild36;
-        int numOnOtherBuild;
+        int numOnTargetBuild;
+        Map<String, Integer> numOnOtherBuild;
+        int numOnUnsupportedGenomeBuild;
         int numLiftoverFailed;
         int numRefStrandMismatch;
+
+        public ManifestStatistics(final String targetBuild) {
+            this.targetBuild = targetBuild;
+            this.numOnOtherBuild = new TreeMap<>();
+        }
 
         void updateStatistics(Build37ExtendedIlluminaManifestRecord rec) {
             numAssays++;
@@ -428,12 +492,17 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             } else {
                 numIndels++;
             }
-            if (rec.getMajorGenomeBuild().equals(Build37ExtendedIlluminaManifestRecordCreator.BUILD_37)) {
-                numOnBuild37++;
-            } else if (rec.getMajorGenomeBuild().equals(Build37ExtendedIlluminaManifestRecordCreator.BUILD_36)) {
-                numOnBuild36++;
+            if (rec.getMajorGenomeBuild().equals(targetBuild)) {
+                numOnTargetBuild++;
             } else {
-                numOnOtherBuild++;
+                Integer num = numOnOtherBuild.get(rec.getMajorGenomeBuild());
+                if (num == null) {
+                    num = 0;
+                }
+                numOnOtherBuild.put(rec.getMajorGenomeBuild(), ++num);
+            }
+            if (rec.getFlag().equals(Build37ExtendedIlluminaManifestRecord.Flag.UNSUPPORTED_GENOME_BUILD)) {
+                numOnUnsupportedGenomeBuild++;
             }
             if (rec.getFlag().equals(Build37ExtendedIlluminaManifestRecord.Flag.LIFTOVER_FAILED)) {
                 numLiftoverFailed++;
@@ -512,32 +581,29 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
         }
 
-        void logStatistics(File output, boolean isRefStrandDefinedInManifest) throws IOException {
+        void logStatistics(File output, final String header) throws IOException {
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
                     new FileOutputStream(output), StandardCharsets.UTF_8))) {
-                writer.write("Report for: ");
-                writer.newLine();
-                writer.newLine();
-                if (!isRefStrandDefinedInManifest) {
-                    writer.write("Note!  REF_STRAND was NOT defined in the manifest.  We have calculated it from the probe sequence.");
-                    writer.newLine();
-                    writer.newLine();
-                }
+                writer.write(header);
 
                 writer.write("Total Number of Assays: " + numAssays);
                 writer.newLine();
 
-                writer.write("Number of Assays on Build37: " + numOnBuild37);
+                writer.write("Number of Assays on Build " + targetBuild + ": " + numOnTargetBuild);
                 writer.newLine();
-                writer.write("Number of Assays on Build36: " + numOnBuild36);
-                writer.newLine();
-                writer.write("Number of Assays on Other Build: " + numOnOtherBuild);
+                int numOnOtherBuilds = 0;
+                for (final String build : numOnOtherBuild.keySet()) {
+                    writer.write("Number of Assays on Build " + build + ": " + numOnOtherBuild.get(build));
+                    writer.newLine();
+                    numOnOtherBuilds += numOnOtherBuild.get(build);
+                }
+                writer.write("Number of Assays on unsupported genome build: " + numOnUnsupportedGenomeBuild);
                 writer.newLine();
                 writer.write("Number of Assays failing liftover: " + numLiftoverFailed);
                 writer.newLine();
                 writer.newLine();
 
-                writer.write("Number of Assays on Build 37 or successfully lifted over: " + (numOnBuild37 + (numOnBuild36 - numLiftoverFailed)));
+                writer.write("Number of Assays on Build " + targetBuild + " or successfully lifted over: " + (numOnTargetBuild + (numOnOtherBuilds - numOnUnsupportedGenomeBuild - numLiftoverFailed)));
                 writer.newLine();
                 writer.write("Number of Passing Assays: " + (numAssays - numAssaysFlagged));
                 writer.newLine();
@@ -609,22 +675,32 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             IOUtil.assertFileIsReadable(DBSNP_FILE);
         }
 
-        IOUtil.assertFileIsReadable(TARGET_REFERENCE_FILE);
+        IOUtil.assertFileIsReadable(REFERENCE_SEQUENCE);
         for (File f : SUPPORTED_REFERENCE_FILE) IOUtil.assertFileIsReadable(f);
         for (File f : SUPPORTED_CHAIN_FILE) IOUtil.assertFileIsReadable(f);
 
         final List<String> errors = new ArrayList<>();
 
+        if (!TARGET_BUILD.equals(Build37ExtendedIlluminaManifestRecordCreator.BUILD_37)) {
+            errors.add("Currently this tool only supports Build 37");
+        }
+
         if (FLAG_DUPLICATES && CLUSTER_FILE == null) {
             errors.add("In order to flag duplicates, a CLUSTER_FILE must be supplied");
         }
 
-        if (SUPPORTED_BUILD.size() != SUPPORTED_REFERENCE_FILE.size()) {
-            errors.add("The number of supported builds does not match the number of supported reference files");
-        }
+        if ((!SUPPORTED_BUILD.isEmpty()) || (!SUPPORTED_REFERENCE_FILE.isEmpty()) || (!SUPPORTED_CHAIN_FILE.isEmpty())) {
+            if ((SUPPORTED_BUILD.isEmpty()) || (SUPPORTED_REFERENCE_FILE.isEmpty()) || (SUPPORTED_CHAIN_FILE.isEmpty())) {
+                errors.add("Parameters for 'SUPPORTED_BUILD', 'SUPPORTED_REFERENCE_FILE', and 'SUPPORTED_CHAIN_FILE' must ALL be specified or not at all.");
+            } else {
+                if (SUPPORTED_BUILD.size() != SUPPORTED_REFERENCE_FILE.size()) {
+                    errors.add("The number of inputs for 'SUPPORTED_BUILD' does not match the number of inputs for 'SUPPORTED_REFERENCE_FILE'");
+                }
 
-        if (SUPPORTED_BUILD.size() != SUPPORTED_CHAIN_FILE.size()) {
-            errors.add("The number of supported builds does not match the number of supported chain files");
+                if (SUPPORTED_BUILD.size() != SUPPORTED_CHAIN_FILE.size()) {
+                    errors.add("The number of inputs for 'SUPPORTED_BUILD' does not match the number of inputs for 'SUPPORTED_CHAIN_FILE'");
+                }
+            }
         }
 
         return (errors.size() > 0)
@@ -675,7 +751,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         }
         addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_VERSION_HEADER_NAME, VERSION);
         addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_TARGET_BUILD_HEADER_NAME, TARGET_BUILD);
-        addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_TARGET_REFERENCE_HEADER_NAME, TARGET_REFERENCE_FILE.getAbsolutePath());
+        addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_TARGET_REFERENCE_HEADER_NAME, REFERENCE_SEQUENCE.getAbsolutePath());
         if (CLUSTER_FILE != null) {
             addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_CLUSTER_FILE_HEADER_NAME, CLUSTER_FILE.getAbsolutePath());
         }
@@ -683,20 +759,23 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             addHeaderLine(output, numColumns, Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_DBSNP_FILE_HEADER_NAME, DBSNP_FILE.getAbsolutePath());
         }
 
-        final String[] supportedBuildsFields = new String[SUPPORTED_BUILD.size() + 1];
-        final String[] supportedReferenceFileFields = new String[SUPPORTED_BUILD.size() + 1];
-        final String[] supportedChainFileFields = new String[SUPPORTED_BUILD.size() + 1];
-        supportedBuildsFields[0] = Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_SUPPORTED_BUILD_HEADER_NAME;
-        supportedReferenceFileFields[0] = Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_SUPPORTED_REFERENCE_HEADER_NAME;
-        supportedChainFileFields[0] = Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_SUPPORTED_CHAIN_FILE_HEADER_NAME;
-        for (int i = 0; i < SUPPORTED_BUILD.size(); i++) {
-            supportedBuildsFields[i + 1] = SUPPORTED_BUILD.get(i);
-            supportedReferenceFileFields[i + 1] = SUPPORTED_REFERENCE_FILE.get(i).getAbsolutePath();
-            supportedChainFileFields[i + 1] = SUPPORTED_CHAIN_FILE.get(i).getAbsolutePath();
+        if (!SUPPORTED_BUILD.isEmpty()) {
+            final String[] supportedBuildsFields = new String[SUPPORTED_BUILD.size() + 1];
+            final String[] supportedReferenceFileFields = new String[SUPPORTED_BUILD.size() + 1];
+            final String[] supportedChainFileFields = new String[SUPPORTED_BUILD.size() + 1];
+            supportedBuildsFields[0] = Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_SUPPORTED_BUILD_HEADER_NAME;
+            supportedReferenceFileFields[0] = Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_SUPPORTED_REFERENCE_HEADER_NAME;
+            supportedChainFileFields[0] = Build37ExtendedIlluminaManifest.EXTENDED_MANIFEST_SUPPORTED_CHAIN_FILE_HEADER_NAME;
+            for (int i = 0; i < SUPPORTED_BUILD.size(); i++) {
+                supportedBuildsFields[i + 1] = SUPPORTED_BUILD.get(i);
+                supportedReferenceFileFields[i + 1] = SUPPORTED_REFERENCE_FILE.get(i).getAbsolutePath();
+                supportedChainFileFields[i + 1] = SUPPORTED_CHAIN_FILE.get(i).getAbsolutePath();
+            }
+            addHeaderLine(output, numColumns, supportedBuildsFields);
+            addHeaderLine(output, numColumns, supportedReferenceFileFields);
+            addHeaderLine(output, numColumns, supportedChainFileFields);
         }
-        addHeaderLine(output, numColumns, supportedBuildsFields);
-        addHeaderLine(output, numColumns, supportedReferenceFileFields);
-        addHeaderLine(output, numColumns, supportedChainFileFields);
+
         addHeaderLine(output, numColumns, lastRowInHeader);
 
         addHeaderLine(output, numColumns, "[Assay]");
