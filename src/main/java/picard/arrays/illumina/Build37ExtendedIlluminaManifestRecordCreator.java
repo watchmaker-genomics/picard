@@ -219,6 +219,55 @@ public class Build37ExtendedIlluminaManifestRecordCreator {
         }
     }
 
+    /**
+     * This method sets the reference strand
+     * TODO - NOTE - This is a version that maintains compatibility with 1.6 - it does NOT use the Illumina-supplied
+     *               Reference Strand.  It calculates it like we did in 1.5 and before (picard-private)
+     *
+     * If the refStrand is provided in the Illumina manifest(s) we will use that.
+     * Unless 'stringent_validation' is in use OR the refStrand is NOT provided in the Illumina manifest we will
+     * attempt to calculate the reference strand by finding the probe sequence in the reference.
+     *
+     * @param refFile reference to use for finding the probe sequence
+     */
+    private void setReferenceStrandForSnp1_6(final Build37ExtendedIlluminaManifestRecord build37ExtendedIlluminaManifestRecord,
+                                          final IlluminaBPMLocusEntry locusEntry,
+                                          final IlluminaManifestRecord illuminaManifestRecord,
+                                          final ReferenceSequenceFile refFile) {
+        if (build37ExtendedIlluminaManifestRecord.referenceStrand != null) {
+            return;
+        }
+
+        build37ExtendedIlluminaManifestRecord.referenceStrand = Strand.NONE;
+        if (build37ExtendedIlluminaManifestRecord.referenceStrand == Strand.NONE) {
+            refStrandDefinedInManifest = false;
+        }
+
+        final String probeSeq;
+        if (build37ExtendedIlluminaManifestRecord.isAmbiguous()) {
+            //ambiguous snps contain the probed base so we need to truncate the string
+            probeSeq = illuminaManifestRecord.getAlleleAProbeSeq().substring(0, illuminaManifestRecord.getAlleleAProbeSeq().length() - 1);
+        } else {
+            probeSeq = illuminaManifestRecord.getAlleleAProbeSeq();
+        }
+
+        final String reference = getSequenceAt(refFile, build37ExtendedIlluminaManifestRecord.b37Chr, build37ExtendedIlluminaManifestRecord.b37Pos - probeSeq.length(), build37ExtendedIlluminaManifestRecord.b37Pos - 1);
+        final String reverseReference = SequenceUtil.reverseComplement(getSequenceAt(refFile, build37ExtendedIlluminaManifestRecord.b37Chr, build37ExtendedIlluminaManifestRecord.b37Pos + 1, build37ExtendedIlluminaManifestRecord.b37Pos + probeSeq.length()));
+
+        if (reference.equals(probeSeq)) {
+            build37ExtendedIlluminaManifestRecord.referenceStrand = Strand.POSITIVE;
+        } else if (reverseReference.equals(probeSeq)) {
+            build37ExtendedIlluminaManifestRecord.referenceStrand = Strand.NEGATIVE;
+        } else {
+            build37ExtendedIlluminaManifestRecord.flag = Build37ExtendedIlluminaManifestRecord.Flag.PROBE_SEQUENCE_MISMATCH;
+            log.warn("Error in getStrand.  Record:" + build37ExtendedIlluminaManifestRecord);
+            log.warn("  Couldn't find alleleAProbeSeq in reference");
+            log.debug("  AlleleAProbeSeq: " + illuminaManifestRecord.getAlleleAProbeSeq());
+            log.debug("  Reference:       " + reference);
+            log.debug("  Reverse Ref:     " + reverseReference);
+        }
+    }
+
     private void processIndel(final Build37ExtendedIlluminaManifestRecord build37ExtendedIlluminaManifestRecord,
                               final IlluminaBPMLocusEntry locusEntry,
                               final IlluminaManifestRecord illuminaManifestRecord,

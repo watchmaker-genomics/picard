@@ -238,13 +238,25 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
     }
 
     // TODO - need to test this method.  Will need to use some sort of MockInfiniumEgtDataFile.
+    /**
+     * This method goes through a list of records and if it finds duplicates, it flags the non-best
+     * with the duplicate flag.
+     *
+     * It iterates over all of the records, looking for records that share the same locus (chrom/position) and alleles.
+     * If it finds more than one record that share these attributes, it will flag all but one as 'duplicate'
+     *  this flag will later be used to set the 'DUPE' filter in the GtcToVcf tool.
+     * The decision as to which record will be flagged as duplicate is based upon the GenTrain score
+     *  (cluster quality from the GenTrain clustering algorithm) which is pulled from the Illumina cluster file.
+     * The record with the highest GenTrain score will NOT be flagged as a duplicate, all others will.
+     *
+     * @param records A list of records to search through and flag for duplicates.
+     */
     private List<Integer> flagDuplicates(List<Build37ExtendedIlluminaManifestRecord> records) {
         Map<String, List<Build37ExtendedIlluminaManifestRecord>> coordinateMap = new HashMap<>();
         for (Build37ExtendedIlluminaManifestRecord record : records) {
 
             // TODO - bug#1 - NOTE - This fixes bug # 1 (Duplicate flagging)  We generated the key for duplicating as coordinates, then an ordered list of allele A and B
             //   We weren't handling the case that either A or B could be ref.
-//            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
             String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele();
             if (!record.getSnpAlleleA().equals(record.getSnpRefAllele())) {
                 key += "." + record.getSnpAlleleA();
@@ -254,6 +266,69 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
             // End of Fix for bug#1
 
+            if (!record.isFail()) {
+                if (coordinateMap.containsKey(key)) {
+                    coordinateMap.get(key).add(record);
+                } else {
+                    List<Build37ExtendedIlluminaManifestRecord> newList = new ArrayList<>();
+                    newList.add(record);
+                    coordinateMap.put(key, newList);
+                }
+            }
+        }
+
+        // filter out all unique coordinates
+        Map<String, List<Build37ExtendedIlluminaManifestRecord>> dupeMap = coordinateMap.entrySet().stream()
+                .filter(map -> map.getValue().size() > 1)
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        coordinateMap.clear();
+
+        // Load the cluster file to get the GenTrain scores
+        // load the egt first, and create a map of ilmnid to gentrain score.  Save that and use it for deduplicating.
+        log.info("Loading the egt file");
+        final InfiniumEGTFile infiniumEGTFile;
+        try {
+            infiniumEGTFile = new InfiniumEGTFile(CLUSTER_FILE);
+        } catch (IOException e) {
+            throw new PicardException("Error reading cluster file '" + CLUSTER_FILE.getAbsolutePath() + "'", e);
+        }
+
+        // evaluate each coordinate assay and remove the assay with the best GenTrain score (all remaining are dupes)
+        dupeMap.entrySet().forEach(entry ->
+                entry.getValue().remove(entry.getValue().stream().max(Comparator.comparingDouble(assay ->
+                        infiniumEGTFile.totalScore[infiniumEGTFile.rsNameToIndex.get(assay.getName())])).get()));
+
+        // we really only need the list of indices for the dupes
+        List<Integer> dupeIndices = dupeMap.entrySet().stream()
+                .flatMapToInt(entry ->
+                        entry.getValue().stream()
+                                .mapToInt(IlluminaManifestRecord::getIndex))
+                .boxed().collect(Collectors.toList());
+
+        return dupeIndices;
+    }
+
+    /**
+     * This method goes through a list of records and if it finds duplicates, it flags the non-best
+     * with the duplicate flag.
+     *
+     * It iterates over all of the records, looking for records that share the same locus (chrom/position) and alleles.
+     * If it finds more than one record that share these attributes, it will flag all but one as 'duplicate'
+     *  this flag will later be used to set the 'DUPE' filter in the GtcToVcf tool.
+     * The decision as to which record will be flagged as duplicate is based upon the GenTrain score
+     *  (cluster quality from the GenTrain clustering algorithm) which is pulled from the Illumina cluster file.
+     * The record with the highest GenTrain score will NOT be flagged as a duplicate, all others will.
+     *
+     * TODO - NOTE - This is a version that maintains compatibility with 1.6 - it does NOT use the Illumina-supplied
+     *               Reference Strand.  It calculates it like we did in 1.5 and before (picard-private)
+     *
+     * @param records A list of records to search through and flag for duplicates.
+     */
+    private List<Integer> flagDuplicates1_6(List<Build37ExtendedIlluminaManifestRecord> records) {
+        Map<String, List<Build37ExtendedIlluminaManifestRecord>> coordinateMap = new HashMap<>();
+        for (Build37ExtendedIlluminaManifestRecord record : records) {
+
+            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
             if (!record.isFail()) {
                 if (coordinateMap.containsKey(key)) {
                     coordinateMap.get(key).add(record);
