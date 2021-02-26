@@ -76,8 +76,9 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         @Deprecated
         INDEL_EXTENSION_ERROR,
 
-        /** The calculated reference strand differs from that specified in the manifest (stringent_validation only). */
-        CALC_REF_STRAND_MISMATCH,
+        /** TODO - this one may not be permanent?  Couldn't find ALLELE_B_PROBE_SEQ when needed. */
+        MISSING_ALLELE_B_PROBESEQ,
+
         DUPE,
         PASS,
     }

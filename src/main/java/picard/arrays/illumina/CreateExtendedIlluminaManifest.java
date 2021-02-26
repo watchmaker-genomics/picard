@@ -95,7 +95,10 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
     private static final Log log = Log.getInstance(CreateExtendedIlluminaManifest.class);
 
-    public static final String VERSION = "1.6";
+//    public static final String VERSION = "1.6";
+    // In 1.6a we started using the Illumina-supplied ref_strand (for SNPs).  If it's not defined we use the old approach - match probe sequence
+    //    Only these chips:  [] had places where Illumina's refStrand differed from our calculated.
+    public static final String VERSION = "1.6a";
 
     // TODO - Make the liftover completely optional
 
@@ -226,7 +229,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             out.close();
 
             writeBadAssaysFile(BAD_ASSAYS_FILE, badRecords);
-            manifestStatistics.logStatistics(REPORT_FILE);
+            manifestStatistics.logStatistics(REPORT_FILE, creator.isRefStrandDefinedInManifest());
         } catch (IOException e) {
             throw new PicardException(e.getMessage(), e);
         }
@@ -241,14 +244,14 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
             // TODO - bug#1 - NOTE - This fixes bug # 1 (Duplicate flagging)  We generated the key for duplicating as coordinates, then an ordered list of allele A and B
             //   We weren't handling the case that either A or B could be ref.
-            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
-//            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele();
-//            if (!record.getSnpAlleleA().equals(record.getSnpRefAllele())) {
-//                key += "." + record.getSnpAlleleA();
-//            }
-//            if (!record.getSnpAlleleB().equals(record.getSnpAlleleA()) && !(record.getSnpAlleleB().equals(record.getSnpRefAllele()))) {
-//                key += "." + record.getSnpAlleleB();
-//            }
+//            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele() + "." + record.getSnpAlleleA() + "." + record.getSnpAlleleB();
+            String key = record.getB37Chr() + ":" + record.getB37Pos() + "." + record.getSnpRefAllele();
+            if (!record.getSnpAlleleA().equals(record.getSnpRefAllele())) {
+                key += "." + record.getSnpAlleleA();
+            }
+            if (!record.getSnpAlleleB().equals(record.getSnpAlleleA()) && !(record.getSnpAlleleB().equals(record.getSnpRefAllele()))) {
+                key += "." + record.getSnpAlleleB();
+            }
             // End of Fix for bug#1
 
             if (!record.isFail()) {
@@ -320,6 +323,8 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
         int numSnpsFlagged;
         int numSnpsIlluminaFlagged;
         int numSnpProbeSequenceMismatch;
+        int numSnpMissingAlleleBProbeSequence;
+
         int numAmbiguousSnpsOnPosStrand;
         int numAmbiguousSnpsOnNegStrand;
 
@@ -358,9 +363,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             if (rec.getFlag().equals(Build37ExtendedIlluminaManifestRecord.Flag.LIFTOVER_FAILED)) {
                 numLiftoverFailed++;
             }
-            if (rec.getFlag().equals(Build37ExtendedIlluminaManifestRecord.Flag.CALC_REF_STRAND_MISMATCH)) {
-                numRefStrandMismatch++;
-            }
             if (!rec.isFail()) {
                 if (rec.isDupe()) {
                     numAssaysDuplicated++;
@@ -389,6 +391,12 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                         case PROBE_SEQUENCE_MISMATCH:
                             numSnpProbeSequenceMismatch++;
                             break;
+                        case MISSING_ALLELE_B_PROBESEQ:
+                            numSnpMissingAlleleBProbeSequence++;
+                            break;
+                        case UNSUPPORTED_GENOME_BUILD:
+                        case LIFTOVER_FAILED:
+                            break;          // These are covered above
                         default:
                             throw new PicardException("Unhandled Flag: " + rec.getFlag());
                     }
@@ -419,6 +427,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                         case INDEL_CONFLICT:
                             numIndelConfict++;
                             break;
+                        case UNSUPPORTED_GENOME_BUILD:
+                        case LIFTOVER_FAILED:
+                            break;          // These are covered above
                         default:
                             throw new PicardException("Unhandled Flag: " + rec.getFlag());
                     }
@@ -426,9 +437,18 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             }
         }
 
-        void logStatistics(File output) throws IOException {
+        void logStatistics(File output, boolean isRefStrandDefinedInManifest) throws IOException {
             try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(
                     new FileOutputStream(output), StandardCharsets.UTF_8))) {
+                writer.write("Report for: ");
+                writer.newLine();
+                writer.newLine();
+                if (!isRefStrandDefinedInManifest) {
+                    writer.write("Note!  REF_STRAND was NOT defined in the manifest.  We have calculated it from the probe sequence.");
+                    writer.newLine();
+                    writer.newLine();
+                }
+
                 writer.write("Total Number of Assays: " + numAssays);
                 writer.newLine();
 
@@ -465,7 +485,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                 // Note - currently this is only calculated for SNPs - that's why it's not in the indel section too.
                 writer.write("Number of SNPs failed for refStrand mismatch: "  + numRefStrandMismatch);
                 writer.newLine();
-                writer.write("Number of SNPs failed for sequence mismatch: " + numSnpProbeSequenceMismatch);
+                writer.write("Number of SNPs failed for missing AlleleB ProbeSeq: "  + numSnpMissingAlleleBProbeSequence);
+                writer.newLine();
+                writer.write("Number of SNPs failed for alleleA probe sequence mismatch: " + numSnpProbeSequenceMismatch);
                 writer.newLine();
                 writer.write("Number of ambiguous SNPs on Positive Strand: " + numAmbiguousSnpsOnPosStrand);
                 writer.newLine();
