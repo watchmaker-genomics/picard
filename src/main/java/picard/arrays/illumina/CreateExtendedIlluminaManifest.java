@@ -51,7 +51,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                     "<pre>" +
                     "java -jar picard.jar GtcToVcf \\<br />" +
                     "      --INPUT illumina_chip_manifest.csv \\<br />" +
-                    "      --BPM illumina_chip_manifest.bpm \\<br />" +
                     "      --CF illumina_chip_manifest.egt \\<br />" +
                     "      --TB 37 \\<br />" +
                     "      --TR reference.fasta \\<br />" +
@@ -64,9 +63,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
     @Argument(shortName = StandardOptionDefinitions.INPUT_SHORT_NAME, doc = "This is the text version of the Illumina .bpm file")
     public File INPUT;
-
-    @Argument(shortName = "BPM", doc = "The Illumina Bead Pool Manifest (.bpm) file")
-    public File BEAD_POOL_MANIFEST_FILE;
 
     @Argument(shortName = StandardOptionDefinitions.OUTPUT_SHORT_NAME, doc = "The name of the extended manifest to be written.")
     public File OUTPUT;
@@ -164,15 +160,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             IntervalList manifestSnpIntervals = new IntervalList(sequenceDictionary);
             IntervalList manifestIndelIntervals = new IntervalList(sequenceDictionary);
 
-            log.info("Loading the bpm file");
-            final IlluminaBPMFile illuminaBPMFile;
-            try {
-                illuminaBPMFile = new IlluminaBPMFile(BEAD_POOL_MANIFEST_FILE);
-            } catch (IOException e) {
-                throw new PicardException("Error reading bpm file '" + BEAD_POOL_MANIFEST_FILE.getAbsolutePath() + "'", e);
-            }
-            IlluminaBPMLocusEntry[] illuminaBPMLocusEntries = illuminaBPMFile.getLocusEntries();
-
             Build37ExtendedIlluminaManifestRecordCreator creator = new Build37ExtendedIlluminaManifestRecordCreator(TARGET_BUILD, referenceSequenceMap, chainFilesMap);
 
             // first iteration through the manifest to find all dupes
@@ -181,17 +168,12 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
             List<Build37ExtendedIlluminaManifestRecord> records = new ArrayList<>();
 
-            int locusIndex = 0;
             while (firstPassIterator.hasNext()) {
                 logger.record("0", 0);
-                if (locusIndex > illuminaBPMLocusEntries.length) {
-                    throw new PicardException("Differing number of entries between bpm and manifest file");
-                }
-                IlluminaBPMLocusEntry locusEntry = illuminaBPMLocusEntries[locusIndex++];
                 final IlluminaManifestRecord record = firstPassIterator.next();
 
                 // Create an ExtendedIlluminaManifestRecord here so that we can get the (potentially lifted over) coordinates
-                final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(locusEntry, record);
+                final Build37ExtendedIlluminaManifestRecord rec = creator.createRecord(record);
                 records.add(rec);
 
                 if (!rec.isFail()) {
@@ -266,7 +248,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             sb.append("CreateExtendedIlluminaManifest (version: ").append(VERSION).append(") Report For: ").append(OUTPUT.getName()).append("\n");
             sb.append("Generated on: ").append(new Date()).append("\n");
             sb.append("Using Illumina Manifest: ").append(INPUT.getAbsolutePath()).append("\n");
-            sb.append("Using Illumina BPM: ").append(BEAD_POOL_MANIFEST_FILE.getAbsolutePath()).append("\n");
             if (FLAG_DUPLICATES) {
                 sb.append("Duplicates were flagged\n");
             }
@@ -446,7 +427,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
     }
 
     private static class ManifestStatistics {
-        private String targetBuild;
+        private final String targetBuild;
 
         int numAssays;
         int numAssaysFlagged;

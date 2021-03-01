@@ -83,10 +83,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         PASS,
     }
 
-    private final IlluminaBPMLocusEntry locusEntry;
-    // TODO - switch over to using illuminaManifestRecord as a private member - do NOT extend it.
-    private final IlluminaManifestRecord illuminaManifestRecord;
-
     String b37Chr;
     Integer b37Pos;
     String snpRefAllele;
@@ -107,12 +103,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
      * This constructor is used to read records from an already created Build37ExtendedIlluminaManifestRecord file.
      */
     Build37ExtendedIlluminaManifestRecord(final Map<String, Integer> columnNameToIndex, final String[] line, final int index) {
-        // TODO - I think this could be simplified to not necessarily rely on it including any of the Illumina Manifest records
-        // but that should be done in the calling method I think
-        // Not absolutely sure why this constructor needs to be here?
         super(columnNameToIndex, line, index);
-        this.locusEntry = null;     // TODO - don't like this.
-        this.illuminaManifestRecord = null;
 
         final int end = line.length;
         flag = Flag.valueOf(line[end - 1]);
@@ -143,8 +134,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
                                    final String snpAlleleB,
                                    final String rsId) {
         super(record);
-        this.locusEntry = null;
-        this.illuminaManifestRecord = null;
         this.flag = flag;
         this.b37Chr = b37Chr;
         this.b37Pos = b37Pos;
@@ -152,64 +141,6 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         this.snpAlleleA = snpAlleleA;
         this.snpAlleleB = snpAlleleB;
         this.rsId = rsId;
-    }
-
-    /**
-     * This constructor is used to take a record from an Illumina Manifest and sets the Extended-specific fields
-     * in preparation for writing out the Build37ExtendedIlluminaManifestRecord to file (or otherwise using it)
-     */
-    Build37ExtendedIlluminaManifestRecord(final IlluminaBPMLocusEntry locusEntry,
-                                          final IlluminaManifestRecord record,
-                                   final Map<String, ReferenceSequenceFile> referenceFilesMap) {
-        super(record);
-        this.locusEntry = locusEntry;
-        this.illuminaManifestRecord = record;
-
-        // Look for entries which Illumina has marked as invalid
-//        if (locusEntry.chrom.equals(IlluminaManifestRecord.ILLUMINA_FLAGGED_BAD_CHR)) {
-//            flag = Build37ExtendedIlluminaManifestRecord.Flag.ILLUMINA_FLAGGED;
-//        }
-
-//        if (!illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_36) && !illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_37)) {
-//            flag = Build37ExtendedIlluminaManifestRecord.Flag.UNSUPPORTED_GENOME_BUILD;
-//        }
-
-//        // TODO - figure out how to do this with and without liftover files
-//        if (!isBad()) {
-//            if (illuminaManifestRecord.getMajorGenomeBuild().trim().equals(BUILD_37)) {
-//                // no liftover needed
-//                b37Chr = locusEntry.chrom;
-//                b37Pos = locusEntry.mapInfo;
-//            } else {
-//                liftOverToBuild37(referenceFilesMap, chainFilesMap);
-//            }
-//        }
-
-//        final ReferenceSequenceFile refFile = referenceFilesMap.get(BUILD_37);
-
-//        if (!isBad()) {
-//            if (isSnp()) {      // TODO - will need to do this for indels too.
-//                setReferenceStrand(refFile, stringent_validation);
-//            }
-//        }
-
-//        if (!isBad()) {
-//            if (isSnp()) {
-//                processSnp(refFile);
-//            } else {
-//                processIndel(refFile);
-//            }
-//        }
-
-//        if (!isBad()) {     // Note that populateSnp/IndelAlleles may flag a record as bad
-//            A = Allele.create(snpAlleleA, snpAlleleA.equals(snpRefAllele));
-//            B = Allele.create(snpAlleleB, snpAlleleB.equals(snpRefAllele));
-//            ref = Allele.create(snpRefAllele, true);
-//        } else {
-//            A = Allele.NO_CALL;
-//            B = Allele.NO_CALL;
-//            ref = Allele.NO_CALL;
-//        }
     }
 
     public Allele getAlleleA() {
@@ -282,7 +213,7 @@ public class Build37ExtendedIlluminaManifestRecord extends IlluminaManifestRecor
         this.rsId = rsId;
     }
 
-    // TODO - you should have two different flags for error and dupe and only merge them later.
+    // TODO - maybe you should have two different flags for error and dupe and only merge them later.
     public void setDupe(boolean isDupe) {
         if (!isFail()) {
             if (isDupe) {
