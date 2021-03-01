@@ -46,7 +46,6 @@ public class IlluminaManifestRecord {
 
     private final String snp;
 
-
     private final String addressAId;
     private final String alleleAProbeSeq;
     private final String addressBId;
