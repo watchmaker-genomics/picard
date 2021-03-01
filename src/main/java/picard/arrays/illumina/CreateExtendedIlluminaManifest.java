@@ -55,7 +55,6 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
                     "      --TB 37 \\<br />" +
                     "      --TR reference.fasta \\<br />" +
                     "      --OUTPUT illumina_chip_manifest.extended.csv \\<br />" +
-                    "      --BAF illumina_chip_manifest.extended.bad_assays.csv \\<br />" +
                     "      --RF illumina_chip_manifest.report.txt \\<br />" +
                     "</pre>";
 
@@ -68,7 +67,7 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
     public File OUTPUT;
 
     @Argument(shortName = "BAF", doc = "The name of the the 'bad assays file'. This is a subset version of the extended manifest, " +
-            "containing only unmappable assays")
+            "containing only unmappable assays", optional = true)
     public File BAD_ASSAYS_FILE;
 
     @Argument(shortName = "RF", doc = "The name of the the report file")
@@ -154,7 +153,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
 
             // TODO - Warn - don't allow overwrite
             IOUtil.assertFileIsWritable(OUTPUT);
-            IOUtil.assertFileIsWritable(BAD_ASSAYS_FILE);
+            if (BAD_ASSAYS_FILE != null) {
+                IOUtil.assertFileIsWritable(BAD_ASSAYS_FILE);
+            }
             IOUtil.assertFileIsWritable(REPORT_FILE);
 
             IntervalList manifestSnpIntervals = new IntervalList(sequenceDictionary);
@@ -243,7 +244,9 @@ public class CreateExtendedIlluminaManifest extends CommandLineProgram {
             out.flush();
             out.close();
 
-            writeBadAssaysFile(BAD_ASSAYS_FILE, badRecords);
+            if (BAD_ASSAYS_FILE != null) {
+                writeBadAssaysFile(BAD_ASSAYS_FILE, badRecords);
+            }
             StringBuilder sb = new StringBuilder();
             sb.append("CreateExtendedIlluminaManifest (version: ").append(VERSION).append(") Report For: ").append(OUTPUT.getName()).append("\n");
             sb.append("Generated on: ").append(new Date()).append("\n");
