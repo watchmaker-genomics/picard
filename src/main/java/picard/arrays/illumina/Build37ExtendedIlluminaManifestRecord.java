@@ -24,7 +24,6 @@
 
 package picard.arrays.illumina;
 
-import htsjdk.samtools.reference.ReferenceSequenceFile;
 import htsjdk.tribble.annotation.Strand;
 import htsjdk.variant.variantcontext.Allele;
 import org.apache.commons.lang.StringUtils;

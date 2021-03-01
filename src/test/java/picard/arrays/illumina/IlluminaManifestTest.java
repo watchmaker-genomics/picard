@@ -57,6 +57,7 @@ public class IlluminaManifestTest {
                 Assert.assertEquals(record.getBeadSetId(), 662);
                 Assert.assertEquals(record.getExpClusters(), "3");
                 Assert.assertEquals(record.getRefStrand(), Strand.NEGATIVE);
+                Assert.assertFalse(record.getIntensityOnly());
             }
         }
         Assert.assertEquals(count, 4);
